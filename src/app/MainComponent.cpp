@@ -1,6 +1,7 @@
 #include "MainComponent.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <cmath>
 #include <mutex>
 
@@ -69,11 +70,129 @@ void ScopeStrip::paint(juce::Graphics& g) {
     g.strokePath(waveform, juce::PathStrokeType(1.5f));
 }
 
+void SpectrogramStrip::setTrace(std::vector<float> trace, bool active) {
+    active_ = active;
+    if (!active_ || trace.size() < 16) {
+        columns_.clear();
+        repaint();
+        return;
+    }
+
+    constexpr int kBins = 40;
+    std::vector<float> bins(static_cast<std::size_t>(kBins), 0.0f);
+    const std::size_t n = trace.size();
+    const float invN = 1.0f / static_cast<float>(n);
+    for (int b = 0; b < kBins; ++b) {
+        const float binNorm = static_cast<float>(b + 1) / static_cast<float>(kBins);
+        const std::size_t k = std::max<std::size_t>(1, static_cast<std::size_t>(binNorm * (n * 0.5f)));
+        float re = 0.0f;
+        float im = 0.0f;
+        for (std::size_t i = 0; i < n; ++i) {
+            const float phase = static_cast<float>(2.0 * juce::MathConstants<double>::pi * static_cast<double>(k) *
+                                                   static_cast<double>(i) * static_cast<double>(invN));
+            const float s = trace[i];
+            re += s * std::cos(phase);
+            im -= s * std::sin(phase);
+        }
+        const float mag = std::sqrt(re * re + im * im) * invN;
+        bins[static_cast<std::size_t>(b)] = juce::jlimit(0.0f, 1.0f, 0.2f * std::log10(1.0f + mag * 20.0f));
+    }
+    columns_.push_back(std::move(bins));
+    constexpr std::size_t kMaxCols = 180;
+    if (columns_.size() > kMaxCols) {
+        columns_.erase(columns_.begin(), columns_.begin() + static_cast<std::ptrdiff_t>(columns_.size() - kMaxCols));
+    }
+    repaint();
+}
+
+void SpectrogramStrip::paint(juce::Graphics& g) {
+    const auto bounds = getLocalBounds().toFloat();
+    g.setColour(juce::Colour::fromRGB(86, 92, 100));
+    g.fillRoundedRectangle(bounds, 5.0f);
+    g.setColour(juce::Colour::fromRGB(154, 162, 172));
+    g.drawRoundedRectangle(bounds, 5.0f, 1.0f);
+
+    if (!active_ || columns_.empty()) {
+        g.setColour(juce::Colour::fromRGB(230, 236, 244));
+        g.setFont(juce::FontOptions{10.0f});
+        g.drawText("No spectrum history", getLocalBounds(), juce::Justification::centred, true);
+        return;
+    }
+
+    const float left = bounds.getX() + 6.0f;
+    const float right = bounds.getRight() - 6.0f;
+    const float top = bounds.getY() + 6.0f;
+    const float bottom = bounds.getBottom() - 6.0f;
+    const int bins = static_cast<int>(columns_.front().size());
+    const int cols = static_cast<int>(columns_.size());
+    for (int x = 0; x < cols; ++x) {
+        const float x0 = left + (right - left) * (static_cast<float>(x) / static_cast<float>(std::max(1, cols)));
+        const float x1 = left + (right - left) * (static_cast<float>(x + 1) / static_cast<float>(std::max(1, cols)));
+        for (int b = 0; b < bins; ++b) {
+            const float v = columns_[static_cast<std::size_t>(x)][static_cast<std::size_t>(b)];
+            const float y0 = bottom - (bottom - top) * (static_cast<float>(b + 1) / static_cast<float>(bins));
+            const float y1 = bottom - (bottom - top) * (static_cast<float>(b) / static_cast<float>(bins));
+            const auto c = juce::Colour::fromFloatRGBA(0.25f + 0.6f * v, 0.45f + 0.5f * v, 0.9f, 0.9f);
+            g.setColour(c);
+            g.fillRect(juce::Rectangle<float>(x0, y0, std::max(1.0f, x1 - x0), std::max(1.0f, y1 - y0)));
+        }
+    }
+}
+
+void PhaseStrip::setTrace(std::vector<float> trace, bool active) {
+    trace_ = std::move(trace);
+    active_ = active;
+    repaint();
+}
+
+void PhaseStrip::paint(juce::Graphics& g) {
+    const auto bounds = getLocalBounds().toFloat();
+    g.setColour(juce::Colour::fromRGB(86, 92, 100));
+    g.fillRoundedRectangle(bounds, 5.0f);
+    g.setColour(juce::Colour::fromRGB(154, 162, 172));
+    g.drawRoundedRectangle(bounds, 5.0f, 1.0f);
+
+    if (!active_ || trace_.size() < 3) {
+        g.setColour(juce::Colour::fromRGB(230, 236, 244));
+        g.setFont(juce::FontOptions{10.0f});
+        g.drawText("No phase trace", getLocalBounds(), juce::Justification::centred, true);
+        return;
+    }
+
+    const float left = bounds.getX() + 6.0f;
+    const float right = bounds.getRight() - 6.0f;
+    const float top = bounds.getY() + 6.0f;
+    const float bottom = bounds.getBottom() - 6.0f;
+    const float midX = 0.5f * (left + right);
+    const float midY = 0.5f * (top + bottom);
+    const float sx = 0.48f * (right - left);
+    const float sy = 0.48f * (bottom - top);
+
+    g.setColour(juce::Colour::fromRGBA(212, 220, 232, 100));
+    g.drawLine(midX, top, midX, bottom, 1.0f);
+    g.drawLine(left, midY, right, midY, 1.0f);
+
+    juce::Path p;
+    bool started = false;
+    for (std::size_t i = 1; i < trace_.size(); ++i) {
+        const float x = midX + juce::jlimit(-1.0f, 1.0f, trace_[i - 1]) * sx;
+        const float y = midY - juce::jlimit(-1.0f, 1.0f, trace_[i]) * sy;
+        if (!started) {
+            p.startNewSubPath(x, y);
+            started = true;
+        } else {
+            p.lineTo(x, y);
+        }
+    }
+    g.setColour(juce::Colour::fromRGB(220, 236, 252));
+    g.strokePath(p, juce::PathStrokeType(1.2f));
+}
+
 MainComponent::MainComponent()
     : canvas_(audioEngine_) {
     addAndMakeVisible(canvas_);
 
-    for (auto* button : {&nodePalette_, &load_, &save_, &connect_, &remove_, &clear_, &autoConvert_}) {
+    for (auto* button : {&nodePalette_, &load_, &save_, &connect_, &clear_, &autoConvert_}) {
         addAndMakeVisible(*button);
         button->addListener(this);
         button->setColour(juce::TextButton::buttonColourId, juce::Colour::fromRGB(134, 139, 147));
@@ -100,8 +219,18 @@ MainComponent::MainComponent()
     addAndMakeVisible(paramA_);
     addAndMakeVisible(paramB_);
     addAndMakeVisible(modeToggle_);
+    addAndMakeVisible(recordFolderButton_);
+    addAndMakeVisible(recordFolderLabel_);
+    addAndMakeVisible(sampleLoadButton_);
+    addAndMakeVisible(sampleFileLabel_);
+    addAndMakeVisible(bytebeatEditButton_);
+    addAndMakeVisible(bytebeatLabel_);
     addAndMakeVisible(scopeLabel_);
     addAndMakeVisible(scopeStrip_);
+    addAndMakeVisible(spectrogramLabel_);
+    addAndMakeVisible(spectrogramStrip_);
+    addAndMakeVisible(phaseLabel_);
+    addAndMakeVisible(phaseStrip_);
 
     inspectorTitle_.setJustificationType(juce::Justification::centredLeft);
     inspectorTitle_.setFont(juce::FontOptions{12.0f});
@@ -110,10 +239,14 @@ MainComponent::MainComponent()
     paramBLabel_.setJustificationType(juce::Justification::centredLeft);
     modeLabel_.setJustificationType(juce::Justification::centredLeft);
     scopeLabel_.setJustificationType(juce::Justification::centredLeft);
+    spectrogramLabel_.setJustificationType(juce::Justification::centredLeft);
+    phaseLabel_.setJustificationType(juce::Justification::centredLeft);
     paramALabel_.setColour(juce::Label::textColourId, juce::Colour::fromRGB(64, 69, 78));
     paramBLabel_.setColour(juce::Label::textColourId, juce::Colour::fromRGB(64, 69, 78));
     modeLabel_.setColour(juce::Label::textColourId, juce::Colour::fromRGB(64, 69, 78));
     scopeLabel_.setColour(juce::Label::textColourId, juce::Colour::fromRGB(64, 69, 78));
+    spectrogramLabel_.setColour(juce::Label::textColourId, juce::Colour::fromRGB(64, 69, 78));
+    phaseLabel_.setColour(juce::Label::textColourId, juce::Colour::fromRGB(64, 69, 78));
 
     for (auto* s : {&paramA_, &paramB_}) {
         s->setSliderStyle(juce::Slider::LinearHorizontal);
@@ -128,10 +261,33 @@ MainComponent::MainComponent()
     }
     modeToggle_.setColour(juce::ToggleButton::textColourId, juce::Colour::fromRGB(50, 56, 64));
     modeToggle_.addListener(this);
+    recordFolderButton_.addListener(this);
+    sampleLoadButton_.addListener(this);
+    bytebeatEditButton_.addListener(this);
+    recordFolderLabel_.setJustificationType(juce::Justification::centredLeft);
+    recordFolderLabel_.setColour(juce::Label::textColourId, juce::Colour::fromRGB(64, 69, 78));
+    sampleFileLabel_.setJustificationType(juce::Justification::centredLeft);
+    sampleFileLabel_.setColour(juce::Label::textColourId, juce::Colour::fromRGB(64, 69, 78));
+    bytebeatLabel_.setJustificationType(juce::Justification::topLeft);
+    bytebeatLabel_.setColour(juce::Label::textColourId, juce::Colour::fromRGB(64, 69, 78));
+    recordFolderButton_.setVisible(false);
+    recordFolderLabel_.setVisible(false);
+    sampleLoadButton_.setVisible(false);
+    sampleFileLabel_.setVisible(false);
+    bytebeatEditButton_.setVisible(false);
+    bytebeatLabel_.setVisible(false);
     scopeLabel_.setVisible(false);
     scopeStrip_.setVisible(false);
+    spectrogramLabel_.setVisible(false);
+    spectrogramStrip_.setVisible(false);
+    phaseLabel_.setVisible(false);
+    phaseStrip_.setVisible(false);
 
     canvas_.syncFromGraph();
+    outputRecordFolder_ =
+        juce::File::getSpecialLocation(juce::File::userDocumentsDirectory).getChildFile("neural recordings");
+    outputRecordFolder_.createDirectory();
+    recordThread_.startThread();
     setAudioChannels(2, 2);
     {
         juce::AudioDeviceManager::AudioDeviceSetup setup;
@@ -148,9 +304,11 @@ MainComponent::MainComponent()
 }
 
 MainComponent::~MainComponent() {
+    stopOutputRecording();
+    recordThread_.stopThread(1500);
     shutdownAudio();
 
-    for (auto* button : {&nodePalette_, &load_, &save_, &connect_, &remove_, &clear_, &autoConvert_}) {
+    for (auto* button : {&nodePalette_, &load_, &save_, &connect_, &clear_, &autoConvert_, &recordFolderButton_, &sampleLoadButton_, &bytebeatEditButton_}) {
         button->removeListener(this);
     }
     modeToggle_.removeListener(this);
@@ -181,7 +339,7 @@ void MainComponent::resized() {
 
     const int buttonW = 110;
     const int buttonGap = 6;
-    for (auto* button : {&nodePalette_, &load_, &save_, &connect_, &remove_, &clear_, &autoConvert_}) {
+    for (auto* button : {&nodePalette_, &load_, &save_, &connect_, &clear_, &autoConvert_}) {
         button->setBounds(top.removeFromLeft(buttonW));
         top.removeFromLeft(buttonGap);
     }
@@ -203,8 +361,21 @@ void MainComponent::resized() {
     modeLabel_.setBounds(inspector.removeFromTop(18));
     modeToggle_.setBounds(inspector.removeFromTop(24));
     inspector.removeFromTop(10);
+    recordFolderButton_.setBounds(inspector.removeFromTop(24));
+    recordFolderLabel_.setBounds(inspector.removeFromTop(20));
+    sampleLoadButton_.setBounds(inspector.removeFromTop(24));
+    sampleFileLabel_.setBounds(inspector.removeFromTop(20));
+    bytebeatEditButton_.setBounds(inspector.removeFromTop(24));
+    bytebeatLabel_.setBounds(inspector.removeFromTop(42));
+    inspector.removeFromTop(8);
     scopeLabel_.setBounds(inspector.removeFromTop(18));
-    scopeStrip_.setBounds(inspector.removeFromTop(88));
+    scopeStrip_.setBounds(inspector.removeFromTop(68));
+    inspector.removeFromTop(8);
+    spectrogramLabel_.setBounds(inspector.removeFromTop(18));
+    spectrogramStrip_.setBounds(inspector.removeFromTop(68));
+    inspector.removeFromTop(8);
+    phaseLabel_.setBounds(inspector.removeFromTop(18));
+    phaseStrip_.setBounds(inspector.removeFromTop(68));
 
     canvas_.setBounds(area);
 }
@@ -218,8 +389,6 @@ void MainComponent::buttonClicked(juce::Button* button) {
         saveProject();
     } else if (button == &connect_) {
         canvas_.connectSelected();
-    } else if (button == &remove_) {
-        canvas_.deleteSelected();
     } else if (button == &clear_) {
         juce::Component::SafePointer<MainComponent> safeThis(this);
         juce::AlertWindow::showOkCancelBox(
@@ -241,6 +410,12 @@ void MainComponent::buttonClicked(juce::Button* button) {
         const bool enabled = !canvas_.autoInsertConvertersEnabled();
         canvas_.setAutoInsertConvertersEnabled(enabled);
         autoConvert_.setButtonText(enabled ? "AutoConv: On" : "AutoConv: Off");
+    } else if (button == &recordFolderButton_) {
+        chooseRecordFolder();
+    } else if (button == &sampleLoadButton_) {
+        chooseSampleWav();
+    } else if (button == &bytebeatEditButton_) {
+        editBytebeatScript();
     } else if (button == &modeToggle_) {
         if (!inspectorApplying_) {
             applyInspectorValues();
@@ -262,19 +437,22 @@ void MainComponent::timerCallback() {
     canvas_.syncFromGraph();
     refreshInspector();
 
-    if (inspectedNodeType_ == "ScopeProbe" && inspectedNodeId_.has_value()) {
+    if (inspectedNodeId_.has_value() && inspectedNodeType_ == "ScopeProbe") {
+        const auto trace = audioEngine_.observedNodeTrace();
+        const bool active = trace.size() > 2;
+        scopeStrip_.setTrace(trace, active);
+        spectrogramStrip_.setTrace(trace, active);
+        phaseStrip_.setTrace(trace, active);
         const auto peak = audioEngine_.latestScopeProbePeak();
         const auto probeNode = audioEngine_.latestScopeProbeNodeId();
-        if (probeNode == *inspectedNodeId_) {
-            inspectorTitle_.setText("Inspector: ScopeProbe  Peak " + juce::String(peak, 3),
-                                    juce::dontSendNotification);
-            scopeStrip_.setTrace(audioEngine_.latestScopeProbeTrace(), true);
-        } else {
-            inspectorTitle_.setText("Inspector: ScopeProbe  Peak --", juce::dontSendNotification);
-            scopeStrip_.setTrace({}, false);
-        }
+        inspectorTitle_.setText(probeNode == *inspectedNodeId_
+                                    ? ("Inspector: ScopeProbe  Peak " + juce::String(peak, 3))
+                                    : "Inspector: ScopeProbe  Peak --",
+                                juce::dontSendNotification);
     } else {
         scopeStrip_.setTrace({}, false);
+        spectrogramStrip_.setTrace({}, false);
+        phaseStrip_.setTrace({}, false);
     }
 
     int nodeCount = 0;
@@ -303,6 +481,7 @@ void MainComponent::showNodePaletteMenu() {
     utility.addItem(3, "UnitConvert");
     utility.addItem(4, "ScopeProbe");
     utility.addItem(5, "Constant");
+    utility.addItem(6, "FeedbackTap");
 
     juce::PopupMenu core;
     core.addItem(10, "NeuronCore");
@@ -328,23 +507,40 @@ void MainComponent::showNodePaletteMenu() {
     sources.addItem(31, "OscillatorPhase");
     sources.addItem(32, "Noise");
     sources.addItem(33, "Drift");
+    sources.addItem(34, "SamplePlayerWav");
+    sources.addItem(35, "BytebeatJs");
 
     juce::PopupMenu dsp;
     dsp.addItem(40, "PhaseOps");
     dsp.addItem(41, "DelayShort");
     dsp.addItem(42, "BiquadCore");
     dsp.addItem(43, "SampleHold");
+    dsp.addItem(56, "SampleHoldGated");
+    dsp.addItem(57, "SampleHoldClocked");
+    dsp.addItem(58, "SampleHoldSlew");
+    dsp.addItem(59, "SampleHoldQuantized");
     dsp.addItem(44, "CrossfadeVCA");
     dsp.addItem(45, "Allpass");
+    dsp.addItem(60, "AllpassBank");
+    dsp.addItem(61, "CombFilter");
+    dsp.addItem(62, "DiffusionBlock");
     dsp.addItem(46, "Invert");
     dsp.addItem(47, "Modulo");
     dsp.addItem(48, "Counter");
     dsp.addItem(49, "Add");
     dsp.addItem(50, "Multiply");
+    dsp.addItem(63, "AnalogAnd");
+    dsp.addItem(64, "AnalogOr");
+    dsp.addItem(65, "AnalogXor");
+    dsp.addItem(66, "AnalogNand");
+    dsp.addItem(67, "AnalogNor");
     dsp.addItem(51, "Compare");
     dsp.addItem(52, "RandomGate");
     dsp.addItem(53, "Switch");
     dsp.addItem(54, "SlopeDetect");
+    dsp.addItem(55, "MatrixMixer");
+    dsp.addItem(68, "SchmittTrigger");
+    dsp.addItem(69, "WindowComparator");
 
     juce::PopupMenu menu;
     menu.addSubMenu("Utility", utility);
@@ -365,6 +561,7 @@ void MainComponent::showNodePaletteMenu() {
                            case 3: safeThis->addNodeType("UnitConvert"); break;
                            case 4: safeThis->addNodeType("ScopeProbe"); break;
                            case 5: safeThis->addNodeType("Constant"); break;
+                           case 6: safeThis->addNodeType("FeedbackTap"); break;
                            case 10: safeThis->addNodeType("NeuronCore"); break;
                            case 11: safeThis->addNodeType("Synapse"); break;
                            case 12: safeThis->addNodeType("Integrator"); break;
@@ -386,21 +583,38 @@ void MainComponent::showNodePaletteMenu() {
                            case 31: safeThis->addNodeType("OscillatorPhase"); break;
                            case 32: safeThis->addNodeType("Noise"); break;
                            case 33: safeThis->addNodeType("Drift"); break;
+                           case 34: safeThis->addNodeType("SamplePlayerWav"); break;
+                           case 35: safeThis->addNodeType("BytebeatJs"); break;
                            case 40: safeThis->addNodeType("PhaseOps"); break;
                            case 41: safeThis->addNodeType("DelayShort"); break;
                            case 42: safeThis->addNodeType("BiquadCore"); break;
                            case 43: safeThis->addNodeType("SampleHold"); break;
+                           case 56: safeThis->addNodeType("SampleHoldGated"); break;
+                           case 57: safeThis->addNodeType("SampleHoldClocked"); break;
+                           case 58: safeThis->addNodeType("SampleHoldSlew"); break;
+                           case 59: safeThis->addNodeType("SampleHoldQuantized"); break;
                            case 44: safeThis->addNodeType("CrossfadeVCA"); break;
                            case 45: safeThis->addNodeType("Allpass"); break;
+                           case 60: safeThis->addNodeType("AllpassBank"); break;
+                           case 61: safeThis->addNodeType("CombFilter"); break;
+                           case 62: safeThis->addNodeType("DiffusionBlock"); break;
                            case 46: safeThis->addNodeType("Invert"); break;
                            case 47: safeThis->addNodeType("Modulo"); break;
                            case 48: safeThis->addNodeType("Counter"); break;
                            case 49: safeThis->addNodeType("Add"); break;
                            case 50: safeThis->addNodeType("Multiply"); break;
+                           case 63: safeThis->addNodeType("AnalogAnd"); break;
+                           case 64: safeThis->addNodeType("AnalogOr"); break;
+                           case 65: safeThis->addNodeType("AnalogXor"); break;
+                           case 66: safeThis->addNodeType("AnalogNand"); break;
+                           case 67: safeThis->addNodeType("AnalogNor"); break;
                            case 51: safeThis->addNodeType("Compare"); break;
                            case 52: safeThis->addNodeType("RandomGate"); break;
                            case 53: safeThis->addNodeType("Switch"); break;
                            case 54: safeThis->addNodeType("SlopeDetect"); break;
+                           case 55: safeThis->addNodeType("MatrixMixer"); break;
+                           case 68: safeThis->addNodeType("SchmittTrigger"); break;
+                           case 69: safeThis->addNodeType("WindowComparator"); break;
                            default: break;
                            }
                        });
@@ -702,6 +916,129 @@ void MainComponent::loadProjectFromFile(const juce::File& inFile) {
     currentProjectFile_ = inFile;
 }
 
+void MainComponent::chooseRecordFolder() {
+    activeFileChooser_ = std::make_unique<juce::FileChooser>(
+        "Choose Recording Folder",
+        outputRecordFolder_.isDirectory()
+            ? outputRecordFolder_
+            : juce::File::getSpecialLocation(juce::File::userDocumentsDirectory),
+        "*");
+    juce::Component::SafePointer<MainComponent> safeThis(this);
+    activeFileChooser_->launchAsync(juce::FileBrowserComponent::openMode |
+                                        juce::FileBrowserComponent::canSelectDirectories,
+                                    [safeThis](const juce::FileChooser& chooser) {
+                                        if (safeThis == nullptr) {
+                                            return;
+                                        }
+                                        const auto folder = chooser.getResult();
+                                        safeThis->activeFileChooser_.reset();
+                                        if (folder == juce::File{} || !folder.isDirectory()) {
+                                            return;
+                                        }
+                                        safeThis->outputRecordFolder_ = folder;
+                                        if (safeThis->inspectedNodeType_ == "OutputStereo") {
+                                            safeThis->recordFolderLabel_.setText(
+                                                "Folder: " + folder.getFullPathName(),
+                                                juce::dontSendNotification);
+                                        }
+                                    });
+}
+
+void MainComponent::chooseSampleWav() {
+    if (!inspectedNodeId_.has_value() || inspectedNodeType_ != "SamplePlayerWav") {
+        return;
+    }
+    activeFileChooser_ = std::make_unique<juce::FileChooser>(
+        "Load WAV",
+        juce::File::getSpecialLocation(juce::File::userDocumentsDirectory),
+        "*.wav");
+    juce::Component::SafePointer<MainComponent> safeThis(this);
+    const auto nodeId = *inspectedNodeId_;
+    activeFileChooser_->launchAsync(juce::FileBrowserComponent::openMode |
+                                        juce::FileBrowserComponent::canSelectFiles,
+                                    [safeThis, nodeId](const juce::FileChooser& chooser) {
+                                        if (safeThis == nullptr) {
+                                            return;
+                                        }
+                                        const auto file = chooser.getResult();
+                                        safeThis->activeFileChooser_.reset();
+                                        if (file == juce::File{} || !file.existsAsFile()) {
+                                            return;
+                                        }
+                                        const bool ok =
+                                            safeThis->audioEngine_.loadWavFileForNode(nodeId, file.getFullPathName().toStdString());
+                                        safeThis->sampleFileLabel_.setText(
+                                            ok ? ("Clip: " + file.getFileName()) : "Clip: load failed",
+                                            juce::dontSendNotification);
+                                    });
+}
+
+void MainComponent::editBytebeatScript() {
+    if (!inspectedNodeId_.has_value() || inspectedNodeType_ != "BytebeatJs") {
+        return;
+    }
+    const auto nodeId = *inspectedNodeId_;
+    activeFileChooser_ = std::make_unique<juce::FileChooser>(
+        "Load JS Bytebeat Expression",
+        juce::File::getSpecialLocation(juce::File::userDocumentsDirectory),
+        "*.js;*.txt");
+    juce::Component::SafePointer<MainComponent> safeThis(this);
+    activeFileChooser_->launchAsync(juce::FileBrowserComponent::openMode |
+                                        juce::FileBrowserComponent::canSelectFiles,
+                                    [safeThis, nodeId](const juce::FileChooser& chooser) {
+                                        if (safeThis == nullptr) {
+                                            return;
+                                        }
+                                        const auto file = chooser.getResult();
+                                        safeThis->activeFileChooser_.reset();
+                                        if (file == juce::File{} || !file.existsAsFile()) {
+                                            return;
+                                        }
+                                        const auto expr = file.loadFileAsString().trim().toStdString();
+                                        if (expr.empty()) {
+                                            return;
+                                        }
+                                        safeThis->audioEngine_.setNodeScript(nodeId, "expr", expr);
+                                        safeThis->bytebeatLabel_.setText(
+                                            "JS: " + juce::String(expr).substring(0, 96),
+                                            juce::dontSendNotification);
+                                    });
+}
+
+void MainComponent::startOutputRecording() {
+    stopOutputRecording();
+
+    if (!outputRecordFolder_.isDirectory()) {
+        outputRecordFolder_.createDirectory();
+    }
+    const auto stamp = juce::Time::getCurrentTime().formatted("%Y%m%d_%H%M%S");
+    const auto outFile = outputRecordFolder_.getChildFile("neural_" + stamp + ".wav");
+    auto stream = outFile.createOutputStream();
+    if (stream == nullptr) {
+        return;
+    }
+
+    juce::AudioDeviceManager::AudioDeviceSetup setup;
+    deviceManager.getAudioDeviceSetup(setup);
+    const double sampleRate = setup.sampleRate > 0.0 ? setup.sampleRate : 48000.0;
+
+    juce::WavAudioFormat wav;
+    auto* writer = wav.createWriterFor(stream.get(), sampleRate, 2, 24, {}, 0);
+    if (writer == nullptr) {
+        return;
+    }
+    stream.release();
+
+    threadedWriter_ = std::make_unique<juce::AudioFormatWriter::ThreadedWriter>(
+        writer, recordThread_, 32768);
+    activeWriter_.store(threadedWriter_.get(), std::memory_order_release);
+}
+
+void MainComponent::stopOutputRecording() {
+    activeWriter_.store(nullptr, std::memory_order_release);
+    threadedWriter_.reset();
+}
+
 void MainComponent::refreshInspector() {
     const auto selectedId = canvas_.singleSelectedNodeId();
     const auto selectedType = canvas_.singleSelectedNodeType();
@@ -709,6 +1046,7 @@ void MainComponent::refreshInspector() {
     if (!selectedId.has_value() || !selectedType.has_value()) {
         inspectedNodeId_.reset();
         inspectedNodeType_.clear();
+        audioEngine_.setObservedNode(std::nullopt);
         inspectorTitle_.setText("Inspector: no node selected", juce::dontSendNotification);
         paramA_.setVisible(false);
         paramB_.setVisible(false);
@@ -716,8 +1054,18 @@ void MainComponent::refreshInspector() {
         paramBLabel_.setVisible(false);
         modeLabel_.setVisible(false);
         modeToggle_.setVisible(false);
+        recordFolderButton_.setVisible(false);
+        recordFolderLabel_.setVisible(false);
+        sampleLoadButton_.setVisible(false);
+        sampleFileLabel_.setVisible(false);
+        bytebeatEditButton_.setVisible(false);
+        bytebeatLabel_.setVisible(false);
         scopeLabel_.setVisible(false);
         scopeStrip_.setVisible(false);
+        spectrogramLabel_.setVisible(false);
+        spectrogramStrip_.setVisible(false);
+        phaseLabel_.setVisible(false);
+        phaseStrip_.setVisible(false);
         return;
     }
 
@@ -727,6 +1075,9 @@ void MainComponent::refreshInspector() {
 
     inspectedNodeId_ = selectedId;
     inspectedNodeType_ = *selectedType;
+    audioEngine_.setObservedNode(inspectedNodeType_ == "ScopeProbe"
+                                     ? std::optional<neurons::engine::core::NodeId>{*selectedId}
+                                     : std::nullopt);
 
     inspectorApplying_ = true;
 
@@ -736,8 +1087,18 @@ void MainComponent::refreshInspector() {
     paramBLabel_.setVisible(false);
     modeLabel_.setVisible(false);
     modeToggle_.setVisible(false);
+    recordFolderButton_.setVisible(false);
+    recordFolderLabel_.setVisible(false);
+    sampleLoadButton_.setVisible(false);
+    sampleFileLabel_.setVisible(false);
+    bytebeatEditButton_.setVisible(false);
+    bytebeatLabel_.setVisible(false);
     scopeLabel_.setVisible(false);
     scopeStrip_.setVisible(false);
+    spectrogramLabel_.setVisible(false);
+    spectrogramStrip_.setVisible(false);
+    phaseLabel_.setVisible(false);
+    phaseStrip_.setVisible(false);
     paramAKey_.clear();
     paramBKey_.clear();
 
@@ -748,6 +1109,36 @@ void MainComponent::refreshInspector() {
         paramA_.setRange(20.0, 2000.0, 0.01);
         paramA_.setSkewFactorFromMidPoint(220.0);
         paramA_.setValue(audioEngine_.getNodeParam(*inspectedNodeId_, paramAKey_).value_or(220.0f), juce::dontSendNotification);
+    } else if (inspectedNodeType_ == "SamplePlayerWav") {
+        inspectorTitle_.setText("Inspector: SamplePlayerWav", juce::dontSendNotification);
+        paramAKey_ = "rate";
+        paramBKey_ = "cv_octaves";
+        paramALabel_.setText("Base Rate", juce::dontSendNotification);
+        paramBLabel_.setText("CV Octaves", juce::dontSendNotification);
+        paramA_.setRange(0.01, 8.0, 0.001);
+        paramB_.setRange(-4.0, 4.0, 0.001);
+        paramA_.setSkewFactorFromMidPoint(1.0);
+        paramB_.setSkewFactor(1.0);
+        paramA_.setValue(audioEngine_.getNodeParam(*inspectedNodeId_, paramAKey_).value_or(1.0f), juce::dontSendNotification);
+        paramB_.setValue(audioEngine_.getNodeParam(*inspectedNodeId_, paramBKey_).value_or(1.0f), juce::dontSendNotification);
+        paramB_.setVisible(true);
+        paramBLabel_.setVisible(true);
+        sampleLoadButton_.setVisible(true);
+        sampleFileLabel_.setVisible(true);
+        const auto clipName = audioEngine_.sampleClipNameForNode(*inspectedNodeId_);
+        sampleFileLabel_.setText(clipName.empty() ? "Clip: none" : ("Clip: " + juce::String(clipName)),
+                                 juce::dontSendNotification);
+    } else if (inspectedNodeType_ == "BytebeatJs") {
+        inspectorTitle_.setText("Inspector: BytebeatJs", juce::dontSendNotification);
+        paramA_.setVisible(false);
+        paramB_.setVisible(false);
+        paramALabel_.setVisible(false);
+        paramBLabel_.setVisible(false);
+        bytebeatEditButton_.setVisible(true);
+        bytebeatLabel_.setVisible(true);
+        const auto expr = audioEngine_.getNodeScript(*inspectedNodeId_, "expr");
+        const auto shown = expr.empty() ? "(t * ((t >> 5) | (t >> 8))) & 255" : expr;
+        bytebeatLabel_.setText("JS: " + juce::String(shown).substring(0, 96), juce::dontSendNotification);
     } else if (inspectedNodeType_ == "Saturator") {
         inspectorTitle_.setText("Inspector: Saturator", juce::dontSendNotification);
         paramAKey_ = "drive";
@@ -762,6 +1153,20 @@ void MainComponent::refreshInspector() {
         paramA_.setRange(2.0, 8.0, 1.0);
         paramA_.setSkewFactor(1.0);
         paramA_.setValue(audioEngine_.getNodeParam(*inspectedNodeId_, paramAKey_).value_or(2.0f), juce::dontSendNotification);
+    } else if (inspectedNodeType_ == "MatrixMixer") {
+        inspectorTitle_.setText("Inspector: MatrixMixer", juce::dontSendNotification);
+        paramAKey_ = "global_gain";
+        paramBKey_ = "global_pan";
+        paramALabel_.setText("Global Gain", juce::dontSendNotification);
+        paramBLabel_.setText("Global Pan Spread", juce::dontSendNotification);
+        paramA_.setRange(0.0, 2.0, 0.001);
+        paramB_.setRange(-1.0, 1.0, 0.001);
+        paramA_.setSkewFactorFromMidPoint(1.0);
+        paramB_.setSkewFactor(1.0);
+        paramA_.setValue(audioEngine_.getNodeParam(*inspectedNodeId_, paramAKey_).value_or(1.0f), juce::dontSendNotification);
+        paramB_.setValue(audioEngine_.getNodeParam(*inspectedNodeId_, paramBKey_).value_or(0.0f), juce::dontSendNotification);
+        paramB_.setVisible(true);
+        paramBLabel_.setVisible(true);
     } else if (inspectedNodeType_ == "NeuronCore") {
         inspectorTitle_.setText("Inspector: NeuronCore", juce::dontSendNotification);
         paramAKey_ = "gain";
@@ -790,6 +1195,117 @@ void MainComponent::refreshInspector() {
         paramA_.setRange(0.1, 40.0, 0.01);
         paramA_.setSkewFactorFromMidPoint(4.0);
         paramA_.setValue(audioEngine_.getNodeParam(*inspectedNodeId_, paramAKey_).value_or(1.33f), juce::dontSendNotification);
+    } else if (inspectedNodeType_ == "CombFilter") {
+        inspectorTitle_.setText("Inspector: CombFilter", juce::dontSendNotification);
+        paramAKey_ = "delay_ms";
+        paramBKey_ = "feedback";
+        paramALabel_.setText("Delay (ms)", juce::dontSendNotification);
+        paramBLabel_.setText("Feedback", juce::dontSendNotification);
+        paramA_.setRange(0.2, 80.0, 0.01);
+        paramA_.setSkewFactorFromMidPoint(18.0);
+        paramB_.setRange(-0.99, 0.99, 0.001);
+        paramB_.setSkewFactor(1.0);
+        paramA_.setValue(audioEngine_.getNodeParam(*inspectedNodeId_, paramAKey_).value_or(18.0f), juce::dontSendNotification);
+        paramB_.setValue(audioEngine_.getNodeParam(*inspectedNodeId_, paramBKey_).value_or(0.75f), juce::dontSendNotification);
+        paramB_.setVisible(true);
+        paramBLabel_.setVisible(true);
+    } else if (inspectedNodeType_ == "AllpassBank") {
+        inspectorTitle_.setText("Inspector: AllpassBank", juce::dontSendNotification);
+        paramAKey_ = "delay_ms";
+        paramBKey_ = "feedback";
+        paramALabel_.setText("Base Delay (ms)", juce::dontSendNotification);
+        paramBLabel_.setText("Feedback", juce::dontSendNotification);
+        paramA_.setRange(0.1, 30.0, 0.01);
+        paramA_.setSkewFactorFromMidPoint(4.0);
+        paramB_.setRange(-0.99, 0.99, 0.001);
+        paramB_.setSkewFactor(1.0);
+        paramA_.setValue(audioEngine_.getNodeParam(*inspectedNodeId_, paramAKey_).value_or(4.0f), juce::dontSendNotification);
+        paramB_.setValue(audioEngine_.getNodeParam(*inspectedNodeId_, paramBKey_).value_or(0.6f), juce::dontSendNotification);
+        paramB_.setVisible(true);
+        paramBLabel_.setVisible(true);
+    } else if (inspectedNodeType_ == "DiffusionBlock") {
+        inspectorTitle_.setText("Inspector: DiffusionBlock", juce::dontSendNotification);
+        paramAKey_ = "size_ms";
+        paramBKey_ = "mix";
+        paramALabel_.setText("Size (ms)", juce::dontSendNotification);
+        paramBLabel_.setText("Mix", juce::dontSendNotification);
+        paramA_.setRange(0.5, 60.0, 0.01);
+        paramA_.setSkewFactorFromMidPoint(12.0);
+        paramB_.setRange(0.0, 1.0, 0.001);
+        paramB_.setSkewFactor(1.0);
+        paramA_.setValue(audioEngine_.getNodeParam(*inspectedNodeId_, paramAKey_).value_or(12.0f), juce::dontSendNotification);
+        paramB_.setValue(audioEngine_.getNodeParam(*inspectedNodeId_, paramBKey_).value_or(0.5f), juce::dontSendNotification);
+        paramB_.setVisible(true);
+        paramBLabel_.setVisible(true);
+    } else if (inspectedNodeType_ == "FeedbackTap") {
+        inspectorTitle_.setText("Inspector: FeedbackTap", juce::dontSendNotification);
+        paramAKey_ = "loop_ms";
+        paramBKey_ = "reinject";
+        paramALabel_.setText("Loop (ms)", juce::dontSendNotification);
+        paramBLabel_.setText("Reinject", juce::dontSendNotification);
+        paramA_.setRange(5.0, 2000.0, 0.01);
+        paramA_.setSkewFactorFromMidPoint(250.0);
+        paramB_.setRange(-1.0, 1.0, 0.001);
+        paramB_.setSkewFactor(1.0);
+        paramA_.setValue(audioEngine_.getNodeParam(*inspectedNodeId_, paramAKey_).value_or(250.0f), juce::dontSendNotification);
+        paramB_.setValue(audioEngine_.getNodeParam(*inspectedNodeId_, paramBKey_).value_or(0.35f), juce::dontSendNotification);
+        paramB_.setVisible(true);
+        paramBLabel_.setVisible(true);
+        modeLabel_.setText("Mode", juce::dontSendNotification);
+        modeLabel_.setVisible(true);
+        modeToggle_.setButtonText("Freeze");
+        modeToggle_.setToggleState(audioEngine_.getNodeParam(*inspectedNodeId_, "freeze").value_or(0.0f) >= 0.5f,
+                                   juce::dontSendNotification);
+        modeToggle_.setVisible(true);
+    } else if (inspectedNodeType_ == "SampleHoldGated") {
+        inspectorTitle_.setText("Inspector: SampleHoldGated", juce::dontSendNotification);
+        paramAKey_ = "threshold";
+        paramALabel_.setText("Gate Threshold", juce::dontSendNotification);
+        paramA_.setRange(-1.0, 1.0, 0.001);
+        paramA_.setSkewFactor(1.0);
+        paramA_.setValue(audioEngine_.getNodeParam(*inspectedNodeId_, paramAKey_).value_or(0.5f), juce::dontSendNotification);
+    } else if (inspectedNodeType_ == "SampleHoldClocked") {
+        inspectorTitle_.setText("Inspector: SampleHoldClocked", juce::dontSendNotification);
+        paramAKey_ = "low";
+        paramBKey_ = "high";
+        paramALabel_.setText("Schmitt Low", juce::dontSendNotification);
+        paramBLabel_.setText("Schmitt High", juce::dontSendNotification);
+        paramA_.setRange(-1.0, 1.0, 0.001);
+        paramB_.setRange(-1.0, 1.0, 0.001);
+        paramA_.setSkewFactor(1.0);
+        paramB_.setSkewFactor(1.0);
+        paramA_.setValue(audioEngine_.getNodeParam(*inspectedNodeId_, paramAKey_).value_or(0.3f), juce::dontSendNotification);
+        paramB_.setValue(audioEngine_.getNodeParam(*inspectedNodeId_, paramBKey_).value_or(0.7f), juce::dontSendNotification);
+        paramB_.setVisible(true);
+        paramBLabel_.setVisible(true);
+    } else if (inspectedNodeType_ == "SampleHoldSlew") {
+        inspectorTitle_.setText("Inspector: SampleHoldSlew", juce::dontSendNotification);
+        paramAKey_ = "low";
+        paramBKey_ = "slew_ms";
+        paramALabel_.setText("Schmitt Low", juce::dontSendNotification);
+        paramBLabel_.setText("Slew (ms)", juce::dontSendNotification);
+        paramA_.setRange(-1.0, 1.0, 0.001);
+        paramB_.setRange(0.02, 200.0, 0.01);
+        paramA_.setSkewFactor(1.0);
+        paramB_.setSkewFactorFromMidPoint(8.0);
+        paramA_.setValue(audioEngine_.getNodeParam(*inspectedNodeId_, paramAKey_).value_or(0.3f), juce::dontSendNotification);
+        paramB_.setValue(audioEngine_.getNodeParam(*inspectedNodeId_, paramBKey_).value_or(8.0f), juce::dontSendNotification);
+        paramB_.setVisible(true);
+        paramBLabel_.setVisible(true);
+    } else if (inspectedNodeType_ == "SampleHoldQuantized") {
+        inspectorTitle_.setText("Inspector: SampleHoldQuantized", juce::dontSendNotification);
+        paramAKey_ = "threshold";
+        paramBKey_ = "steps";
+        paramALabel_.setText("Gate Threshold", juce::dontSendNotification);
+        paramBLabel_.setText("Steps", juce::dontSendNotification);
+        paramA_.setRange(-1.0, 1.0, 0.001);
+        paramB_.setRange(2.0, 128.0, 1.0);
+        paramA_.setSkewFactor(1.0);
+        paramB_.setSkewFactor(1.0);
+        paramA_.setValue(audioEngine_.getNodeParam(*inspectedNodeId_, paramAKey_).value_or(0.5f), juce::dontSendNotification);
+        paramB_.setValue(audioEngine_.getNodeParam(*inspectedNodeId_, paramBKey_).value_or(12.0f), juce::dontSendNotification);
+        paramB_.setVisible(true);
+        paramBLabel_.setVisible(true);
     } else if (inspectedNodeType_ == "Waveshaper") {
         inspectorTitle_.setText("Inspector: Waveshaper", juce::dontSendNotification);
         paramAKey_ = "drive";
@@ -898,6 +1414,34 @@ void MainComponent::refreshInspector() {
         paramA_.setSkewFactorFromMidPoint(1.0e-4);
         paramA_.setValue(audioEngine_.getNodeParam(*inspectedNodeId_, paramAKey_).value_or(1.0e-4f),
                          juce::dontSendNotification);
+    } else if (inspectedNodeType_ == "SchmittTrigger") {
+        inspectorTitle_.setText("Inspector: SchmittTrigger", juce::dontSendNotification);
+        paramAKey_ = "threshold";
+        paramBKey_ = "hysteresis";
+        paramALabel_.setText("Threshold", juce::dontSendNotification);
+        paramBLabel_.setText("Hysteresis", juce::dontSendNotification);
+        paramA_.setRange(-1.0, 1.0, 0.001);
+        paramB_.setRange(0.0, 1.5, 0.001);
+        paramA_.setSkewFactor(1.0);
+        paramB_.setSkewFactorFromMidPoint(0.2);
+        paramA_.setValue(audioEngine_.getNodeParam(*inspectedNodeId_, paramAKey_).value_or(0.5f), juce::dontSendNotification);
+        paramB_.setValue(audioEngine_.getNodeParam(*inspectedNodeId_, paramBKey_).value_or(0.2f), juce::dontSendNotification);
+        paramB_.setVisible(true);
+        paramBLabel_.setVisible(true);
+    } else if (inspectedNodeType_ == "WindowComparator") {
+        inspectorTitle_.setText("Inspector: WindowComparator", juce::dontSendNotification);
+        paramAKey_ = "center";
+        paramBKey_ = "width";
+        paramALabel_.setText("Center", juce::dontSendNotification);
+        paramBLabel_.setText("Width", juce::dontSendNotification);
+        paramA_.setRange(-1.0, 1.0, 0.001);
+        paramB_.setRange(0.0, 2.0, 0.001);
+        paramA_.setSkewFactor(1.0);
+        paramB_.setSkewFactorFromMidPoint(0.5);
+        paramA_.setValue(audioEngine_.getNodeParam(*inspectedNodeId_, paramAKey_).value_or(0.0f), juce::dontSendNotification);
+        paramB_.setValue(audioEngine_.getNodeParam(*inspectedNodeId_, paramBKey_).value_or(0.5f), juce::dontSendNotification);
+        paramB_.setVisible(true);
+        paramBLabel_.setVisible(true);
     } else if (inspectedNodeType_ == "ScopeProbe") {
         inspectorTitle_.setText("Inspector: ScopeProbe", juce::dontSendNotification);
         paramA_.setVisible(false);
@@ -906,6 +1450,30 @@ void MainComponent::refreshInspector() {
         paramBLabel_.setVisible(false);
         scopeLabel_.setVisible(true);
         scopeStrip_.setVisible(true);
+    } else if (inspectedNodeType_ == "OutputStereo") {
+        inspectorTitle_.setText("Inspector: OutputStereo", juce::dontSendNotification);
+        paramA_.setVisible(false);
+        paramB_.setVisible(false);
+        paramALabel_.setVisible(false);
+        paramBLabel_.setVisible(false);
+        modeLabel_.setText("", juce::dontSendNotification);
+        modeLabel_.setVisible(true);
+        modeToggle_.setButtonText("Write .wav");
+        const bool enabled =
+            audioEngine_.getNodeParam(*inspectedNodeId_, "record_enabled").value_or(0.0f) >= 0.5f;
+        modeToggle_.setToggleState(enabled, juce::dontSendNotification);
+        modeToggle_.setVisible(true);
+        if (enabled) {
+            if (activeWriter_.load(std::memory_order_acquire) == nullptr) {
+                startOutputRecording();
+            }
+        } else {
+            stopOutputRecording();
+        }
+        recordFolderButton_.setVisible(true);
+        recordFolderLabel_.setVisible(true);
+        recordFolderLabel_.setText("Folder: " + outputRecordFolder_.getFullPathName(),
+                                   juce::dontSendNotification);
     } else if (inspectedNodeType_ == "AdaptiveThreshold") {
         inspectorTitle_.setText("Inspector: AdaptiveThreshold", juce::dontSendNotification);
         paramAKey_ = "base_threshold";
@@ -1014,6 +1582,15 @@ void MainComponent::refreshInspector() {
         modeToggle_.setVisible(false);
     }
 
+    if (inspectedNodeType_ == "ScopeProbe") {
+        scopeLabel_.setVisible(true);
+        scopeStrip_.setVisible(true);
+        spectrogramLabel_.setVisible(true);
+        spectrogramStrip_.setVisible(true);
+        phaseLabel_.setVisible(true);
+        phaseStrip_.setVisible(true);
+    }
+
     inspectorApplying_ = false;
 }
 
@@ -1060,6 +1637,16 @@ void MainComponent::applyInspectorValues() {
         audioEngine_.setNodeParam(*inspectedNodeId_, "greater", modeToggle_.getToggleState() ? 1.0f : 0.0f);
     } else if (inspectedNodeType_ == "Switch" && modeToggle_.isVisible()) {
         audioEngine_.setNodeParam(*inspectedNodeId_, "select_b", modeToggle_.getToggleState() ? 1.0f : 0.0f);
+    } else if (inspectedNodeType_ == "FeedbackTap" && modeToggle_.isVisible()) {
+        audioEngine_.setNodeParam(*inspectedNodeId_, "freeze", modeToggle_.getToggleState() ? 1.0f : 0.0f);
+    } else if (inspectedNodeType_ == "OutputStereo" && modeToggle_.isVisible()) {
+        const bool enabled = modeToggle_.getToggleState();
+        audioEngine_.setNodeParam(*inspectedNodeId_, "record_enabled", enabled ? 1.0f : 0.0f);
+        if (enabled) {
+            startOutputRecording();
+        } else {
+            stopOutputRecording();
+        }
     }
     audioEngine_.publishGraphSnapshot();
 }
@@ -1095,6 +1682,11 @@ void MainComponent::getNextAudioBlock(const juce::AudioSourceChannelInfo& buffer
     }
 
     audioEngine_.processBlock(left, right, numSamples);
+
+    if (auto* writer = activeWriter_.load(std::memory_order_acquire); writer != nullptr) {
+        const float* channels[2] = {left, right};
+        writer->write(channels, numSamples);
+    }
 
     for (int ch = 2; ch < numChannels; ++ch) {
         buffer->clear(ch, start, numSamples);

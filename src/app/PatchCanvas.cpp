@@ -653,6 +653,21 @@ neurons::engine::core::NodeSpec PatchCanvas::makeSpec(neurons::engine::core::Nod
         };
         return spec;
     }
+    if (typeName == "MatrixMixer") {
+        spec.inputs = {
+            PortSpec{0, SignalType::BipolarAudio, "in1"},
+            PortSpec{1, SignalType::BipolarAudio, "in2"},
+            PortSpec{2, SignalType::BipolarAudio, "in3"},
+            PortSpec{3, SignalType::BipolarAudio, "in4"},
+        };
+        spec.outputs = {
+            PortSpec{0, SignalType::BipolarAudio, "out1"},
+            PortSpec{1, SignalType::BipolarAudio, "out2"},
+            PortSpec{2, SignalType::BipolarAudio, "out3"},
+            PortSpec{3, SignalType::BipolarAudio, "out4"},
+        };
+        return spec;
+    }
     if (typeName == "Add") {
         spec.inputs = {
             PortSpec{0, SignalType::BipolarAudio, "a"},
@@ -660,6 +675,56 @@ neurons::engine::core::NodeSpec PatchCanvas::makeSpec(neurons::engine::core::Nod
         };
         spec.outputs = {
             PortSpec{0, SignalType::BipolarAudio, "sum"},
+        };
+        return spec;
+    }
+    if (typeName == "AnalogAnd") {
+        spec.inputs = {
+            PortSpec{0, SignalType::BipolarAudio, "a"},
+            PortSpec{1, SignalType::BipolarAudio, "b"},
+        };
+        spec.outputs = {
+            PortSpec{0, SignalType::GateAudio, "and"},
+        };
+        return spec;
+    }
+    if (typeName == "AnalogOr") {
+        spec.inputs = {
+            PortSpec{0, SignalType::BipolarAudio, "a"},
+            PortSpec{1, SignalType::BipolarAudio, "b"},
+        };
+        spec.outputs = {
+            PortSpec{0, SignalType::GateAudio, "or"},
+        };
+        return spec;
+    }
+    if (typeName == "AnalogXor") {
+        spec.inputs = {
+            PortSpec{0, SignalType::BipolarAudio, "a"},
+            PortSpec{1, SignalType::BipolarAudio, "b"},
+        };
+        spec.outputs = {
+            PortSpec{0, SignalType::GateAudio, "xor"},
+        };
+        return spec;
+    }
+    if (typeName == "AnalogNand") {
+        spec.inputs = {
+            PortSpec{0, SignalType::BipolarAudio, "a"},
+            PortSpec{1, SignalType::BipolarAudio, "b"},
+        };
+        spec.outputs = {
+            PortSpec{0, SignalType::GateAudio, "nand"},
+        };
+        return spec;
+    }
+    if (typeName == "AnalogNor") {
+        spec.inputs = {
+            PortSpec{0, SignalType::BipolarAudio, "a"},
+            PortSpec{1, SignalType::BipolarAudio, "b"},
+        };
+        spec.outputs = {
+            PortSpec{0, SignalType::GateAudio, "nor"},
         };
         return spec;
     }
@@ -721,6 +786,16 @@ neurons::engine::core::NodeSpec PatchCanvas::makeSpec(neurons::engine::core::Nod
         };
         spec.outputs = {
             PortSpec{0, SignalType::BipolarAudio, "slope_state"},
+        };
+        return spec;
+    }
+    if (typeName == "SchmittTrigger") {
+        spec.inputs = {
+            PortSpec{0, SignalType::BipolarAudio, "in"},
+            PortSpec{1, SignalType::BipolarAudio, "threshold_cv"},
+        };
+        spec.outputs = {
+            PortSpec{0, SignalType::GateAudio, "gate"},
         };
         return spec;
     }
@@ -856,6 +931,21 @@ neurons::engine::core::NodeSpec PatchCanvas::makeSpec(neurons::engine::core::Nod
         spec.outputs = {{0, SignalType::BipolarAudio, "out"}};
         return spec;
     }
+    if (typeName == "SamplePlayerWav") {
+        spec.inputs = {{0, SignalType::TriggerAudio, "trig"}, {1, SignalType::BipolarAudio, "rate_cv"}};
+        spec.outputs = {{0, SignalType::BipolarAudio, "out"}};
+        return spec;
+    }
+    if (typeName == "BytebeatJs") {
+        spec.inputs = {{0, SignalType::TriggerAudio, "trig"}, {1, SignalType::BipolarAudio, "rate_cv"}};
+        spec.outputs = {{0, SignalType::BipolarAudio, "out"}};
+        return spec;
+    }
+    if (typeName == "FeedbackTap") {
+        spec.inputs = {{0, SignalType::BipolarAudio, "in"}, {1, SignalType::GateAudio, "freeze_cv"}};
+        spec.outputs = {{0, SignalType::BipolarAudio, "out"}};
+        return spec;
+    }
     if (typeName == "OscillatorPhase") {
         spec.inputs = {{0, SignalType::PhaseAudio, "phase_in"}, {1, SignalType::BipolarAudio, "phase_mod"}};
         spec.outputs = {{0, SignalType::BipolarAudio, "out"}};
@@ -881,12 +971,47 @@ neurons::engine::core::NodeSpec PatchCanvas::makeSpec(neurons::engine::core::Nod
         spec.outputs = {{0, SignalType::BipolarAudio, "out"}};
         return spec;
     }
+    if (typeName == "SampleHoldGated") {
+        spec.inputs = {{0, SignalType::BipolarAudio, "in"}, {1, SignalType::GateAudio, "gate"}};
+        spec.outputs = {{0, SignalType::BipolarAudio, "out"}};
+        return spec;
+    }
+    if (typeName == "SampleHoldClocked") {
+        spec.inputs = {{0, SignalType::BipolarAudio, "in"}, {1, SignalType::TriggerAudio, "clock"}};
+        spec.outputs = {{0, SignalType::BipolarAudio, "out"}};
+        return spec;
+    }
+    if (typeName == "SampleHoldSlew") {
+        spec.inputs = {{0, SignalType::BipolarAudio, "in"}, {1, SignalType::TriggerAudio, "clock"}};
+        spec.outputs = {{0, SignalType::BipolarAudio, "out"}};
+        return spec;
+    }
+    if (typeName == "SampleHoldQuantized") {
+        spec.inputs = {{0, SignalType::BipolarAudio, "in"}, {1, SignalType::GateAudio, "gate"}};
+        spec.outputs = {{0, SignalType::BipolarAudio, "out"}};
+        return spec;
+    }
     if (typeName == "CrossfadeVCA") {
         spec.inputs = {{0, SignalType::BipolarAudio, "in_a"}, {1, SignalType::BipolarAudio, "mix"}};
         spec.outputs = {{0, SignalType::BipolarAudio, "out"}};
         return spec;
     }
     if (typeName == "Allpass") {
+        spec.inputs = {{0, SignalType::BipolarAudio, "in"}, {1, SignalType::BipolarAudio, "mod"}};
+        spec.outputs = {{0, SignalType::BipolarAudio, "out"}};
+        return spec;
+    }
+    if (typeName == "AllpassBank") {
+        spec.inputs = {{0, SignalType::BipolarAudio, "in"}, {1, SignalType::BipolarAudio, "mod"}};
+        spec.outputs = {{0, SignalType::BipolarAudio, "out"}};
+        return spec;
+    }
+    if (typeName == "CombFilter") {
+        spec.inputs = {{0, SignalType::BipolarAudio, "in"}, {1, SignalType::BipolarAudio, "mod"}};
+        spec.outputs = {{0, SignalType::BipolarAudio, "out"}};
+        return spec;
+    }
+    if (typeName == "DiffusionBlock") {
         spec.inputs = {{0, SignalType::BipolarAudio, "in"}, {1, SignalType::BipolarAudio, "mod"}};
         spec.outputs = {{0, SignalType::BipolarAudio, "out"}};
         return spec;
@@ -904,6 +1029,11 @@ neurons::engine::core::NodeSpec PatchCanvas::makeSpec(neurons::engine::core::Nod
     if (typeName == "Modulo") {
         spec.inputs = {{0, SignalType::BipolarAudio, "in"}, {1, SignalType::BipolarAudio, "mod"}};
         spec.outputs = {{0, SignalType::BipolarAudio, "out"}};
+        return spec;
+    }
+    if (typeName == "WindowComparator") {
+        spec.inputs = {{0, SignalType::BipolarAudio, "in"}, {1, SignalType::BipolarAudio, "center_cv"}};
+        spec.outputs = {{0, SignalType::GateAudio, "window_gate"}};
         return spec;
     }
 

@@ -42,10 +42,22 @@ target_sources(neuralApp PRIVATE
     src/engine/nodes/NodeProcessor.h
     src/engine/nodes/AdaptiveThresholdNode.cpp
     src/engine/nodes/AdaptiveThresholdNode.h
+    src/engine/nodes/AnalogAndNode.cpp
+    src/engine/nodes/AnalogAndNode.h
+    src/engine/nodes/AnalogOrNode.cpp
+    src/engine/nodes/AnalogOrNode.h
+    src/engine/nodes/AnalogXorNode.cpp
+    src/engine/nodes/AnalogXorNode.h
+    src/engine/nodes/AnalogNandNode.cpp
+    src/engine/nodes/AnalogNandNode.h
+    src/engine/nodes/AnalogNorNode.cpp
+    src/engine/nodes/AnalogNorNode.h
     src/engine/nodes/AddNode.cpp
     src/engine/nodes/AddNode.h
     src/engine/nodes/BurstNeuronNode.cpp
     src/engine/nodes/BurstNeuronNode.h
+    src/engine/nodes/BytebeatJsNode.cpp
+    src/engine/nodes/BytebeatJsNode.h
     src/engine/nodes/CompareNode.cpp
     src/engine/nodes/CompareNode.h
     src/engine/nodes/ConstantNode.cpp
@@ -62,6 +74,10 @@ target_sources(neuralApp PRIVATE
     src/engine/nodes/SynapseNode.h
     src/engine/nodes/AllpassNode.cpp
     src/engine/nodes/AllpassNode.h
+    src/engine/nodes/AllpassBankNode.cpp
+    src/engine/nodes/AllpassBankNode.h
+    src/engine/nodes/CombFilterNode.cpp
+    src/engine/nodes/CombFilterNode.h
     src/engine/nodes/CounterNode.cpp
     src/engine/nodes/CounterNode.h
     src/engine/nodes/InvertNode.cpp
@@ -90,6 +106,8 @@ target_sources(neuralApp PRIVATE
     src/engine/nodes/NoiseNode.h
     src/engine/nodes/DriftNode.cpp
     src/engine/nodes/DriftNode.h
+    src/engine/nodes/FeedbackTapNode.cpp
+    src/engine/nodes/FeedbackTapNode.h
     src/engine/nodes/OscillatorPhaseNode.cpp
     src/engine/nodes/OscillatorPhaseNode.h
     src/engine/nodes/PhaseOpsNode.cpp
@@ -104,6 +122,16 @@ target_sources(neuralApp PRIVATE
     src/engine/nodes/BiquadCoreNode.h
     src/engine/nodes/SampleHoldNode.cpp
     src/engine/nodes/SampleHoldNode.h
+    src/engine/nodes/SampleHoldGatedNode.cpp
+    src/engine/nodes/SampleHoldGatedNode.h
+    src/engine/nodes/SampleHoldClockedNode.cpp
+    src/engine/nodes/SampleHoldClockedNode.h
+    src/engine/nodes/SampleHoldSlewNode.cpp
+    src/engine/nodes/SampleHoldSlewNode.h
+    src/engine/nodes/SamplePlayerWavNode.cpp
+    src/engine/nodes/SamplePlayerWavNode.h
+    src/engine/nodes/SampleHoldQuantizedNode.cpp
+    src/engine/nodes/SampleHoldQuantizedNode.h
     src/engine/nodes/CrossfadeVCANode.cpp
     src/engine/nodes/CrossfadeVCANode.h
     src/engine/nodes/SaturatorNode.cpp
@@ -112,6 +140,8 @@ target_sources(neuralApp PRIVATE
     src/engine/nodes/ScopeProbeNode.h
     src/engine/nodes/SlopeDetectNode.cpp
     src/engine/nodes/SlopeDetectNode.h
+    src/engine/nodes/SchmittTriggerNode.cpp
+    src/engine/nodes/SchmittTriggerNode.h
     src/engine/nodes/SpikeGeneratorNode.cpp
     src/engine/nodes/SpikeGeneratorNode.h
     src/engine/nodes/SwitchNode.cpp
@@ -120,8 +150,12 @@ target_sources(neuralApp PRIVATE
     src/engine/nodes/UnitConvertNode.h
     src/engine/nodes/MultiplyNode.cpp
     src/engine/nodes/MultiplyNode.h
+    src/engine/nodes/WindowComparatorNode.cpp
+    src/engine/nodes/WindowComparatorNode.h
     src/engine/nodes/MembraneLeakCapNode.cpp
     src/engine/nodes/MembraneLeakCapNode.h
+    src/engine/nodes/DiffusionBlockNode.cpp
+    src/engine/nodes/DiffusionBlockNode.h
 
     src/engine/rt/AudioEngine.cpp
     src/engine/rt/AudioEngine.h
@@ -137,4 +171,5 @@ target_compile_definitions(neuralApp PRIVATE
 target_link_libraries(neuralApp PRIVATE
     juce::juce_gui_extra
     juce::juce_audio_utils
+    juce::juce_javascript
 )

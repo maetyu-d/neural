@@ -3,15 +3,22 @@
 #include "../nodes/BiquadCoreNode.h"
 #include "../nodes/AddNode.h"
 #include "../nodes/AdaptiveThresholdNode.h"
+#include "../nodes/AnalogAndNode.h"
+#include "../nodes/AnalogNandNode.h"
+#include "../nodes/AnalogNorNode.h"
+#include "../nodes/AnalogOrNode.h"
+#include "../nodes/AnalogXorNode.h"
 #include "../nodes/CompareNode.h"
 #include "../nodes/ConstantNode.h"
 #include "../nodes/BurstNeuronNode.h"
+#include "../nodes/BytebeatJsNode.h"
 #include "../nodes/CrossfadeVCANode.h"
 #include "../nodes/CounterNode.h"
 #include "../nodes/DelayShortNode.h"
 #include "../nodes/DendriteNonlinearityNode.h"
 #include "../nodes/DendriteSumNode.h"
 #include "../nodes/DriftNode.h"
+#include "../nodes/FeedbackTapNode.h"
 #include "../nodes/GateNode.h"
 #include "../nodes/InvertNode.h"
 #include "../nodes/IntegratorNode.h"
@@ -31,18 +38,30 @@
 #include "../nodes/SaturatorNode.h"
 #include "../nodes/SlewNode.h"
 #include "../nodes/ScopeProbeNode.h"
+#include "../nodes/SchmittTriggerNode.h"
 #include "../nodes/SlopeDetectNode.h"
 #include "../nodes/SpikeGeneratorNode.h"
 #include "../nodes/SwitchNode.h"
 #include "../nodes/SynapseNode.h"
 #include "../nodes/ThresholdNode.h"
 #include "../nodes/UnitConvertNode.h"
+#include "../nodes/WindowComparatorNode.h"
 #include "../nodes/WaveshaperNode.h"
 #include "../nodes/MultiplyNode.h"
 #include "../nodes/MembraneLeakCapNode.h"
 #include "../nodes/AllpassNode.h"
+#include "../nodes/AllpassBankNode.h"
+#include "../nodes/CombFilterNode.h"
+#include "../nodes/DiffusionBlockNode.h"
+#include "../nodes/SampleHoldClockedNode.h"
+#include "../nodes/SampleHoldGatedNode.h"
+#include "../nodes/SampleHoldQuantizedNode.h"
+#include "../nodes/SampleHoldSlewNode.h"
+#include "../nodes/SamplePlayerWavNode.h"
 
+#include <juce_audio_formats/juce_audio_formats.h>
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <memory>
@@ -92,6 +111,8 @@ void AudioEngine::prepareToPlay(int maxBlockSize, double sampleRate) {
 }
 
 void AudioEngine::processBlock(float* left, float* right, int numSamples) {
+    const auto blockStart = std::chrono::high_resolution_clock::now();
+
     if (numSamples <= 0 || left == nullptr || right == nullptr) {
         return;
     }
@@ -152,9 +173,13 @@ void AudioEngine::processBlock(float* left, float* right, int numSamples) {
                 auto& current = outputIt->second;
                 for (int sample = 0; sample < numSamples; ++sample) {
                     const auto idx = static_cast<std::size_t>(sample);
-                    const auto delta = std::abs(current[idx] - previous[idx]);
-                    if (delta > kCycleConvergenceThreshold) {
-                        iterationConverged_[idx] = 0U;
+                    for (std::size_t port = 0; port < current.size() && port < previous.size(); ++port) {
+                        const auto delta =
+                            std::abs(current[port][idx] - previous[port][idx]);
+                        if (delta > kCycleConvergenceThreshold) {
+                            iterationConverged_[idx] = 0U;
+                            break;
+                        }
                     }
                 }
             }
@@ -177,9 +202,13 @@ void AudioEngine::processBlock(float* left, float* right, int numSamples) {
     for (int i = 0; i < numSamples; ++i) {
         const auto idx = static_cast<std::size_t>(i);
         const float rawL = outputNode.has_value() ? inputA_[idx]
-                                                  : ((outIt != outputs_.end()) ? outIt->second[idx] : 0.0f);
+                                                  : ((outIt != outputs_.end() && !outIt->second.empty())
+                                                         ? outIt->second[0][idx]
+                                                         : 0.0f);
         const float rawR = outputNode.has_value() ? inputB_[idx]
-                                                  : ((outIt != outputs_.end()) ? outIt->second[idx] : 0.0f);
+                                                  : ((outIt != outputs_.end() && !outIt->second.empty())
+                                                         ? outIt->second[0][idx]
+                                                         : 0.0f);
 
         float l = std::tanh(rawL);
         float r = std::tanh(rawR);
@@ -198,8 +227,15 @@ void AudioEngine::processBlock(float* left, float* right, int numSamples) {
     const auto stats = cycleSolver_.processSamples(numSamples, converged_.data());
     (void)stats;
 
-    // Placeholder until dedicated perf telemetry is added outside the audio callback.
-    lastCpuLoadPercent_ = 0.0f;
+    const auto blockEnd = std::chrono::high_resolution_clock::now();
+    const double elapsedSec = std::chrono::duration<double>(blockEnd - blockStart).count();
+    const double blockDurationSec =
+        (sampleRate_ > 0.0) ? (static_cast<double>(numSamples) / sampleRate_) : 0.0;
+    const float instantCpu =
+        blockDurationSec > 0.0 ? static_cast<float>(100.0 * (elapsedSec / blockDurationSec)) : 0.0f;
+    const float prev = lastCpuLoadPercent_.load(std::memory_order_relaxed);
+    const float smoothed = prev + 0.2f * (instantCpu - prev);
+    lastCpuLoadPercent_.store(std::clamp(smoothed, 0.0f, 999.0f), std::memory_order_relaxed);
 }
 
 void AudioEngine::releaseResources() {
@@ -207,12 +243,15 @@ void AudioEngine::releaseResources() {
 
     maxBlockSize_ = 0;
     sampleRate_ = 0.0;
-    lastCpuLoadPercent_ = 0.0f;
+    lastCpuLoadPercent_.store(0.0f, std::memory_order_relaxed);
 
     processors_.clear();
     outputs_.clear();
     switchSelectState_.clear();
+    nodeScripts_.clear();
+    sampleClips_.clear();
     std::atomic_store(&latestScopeProbeTrace_, std::shared_ptr<const std::vector<float>>{});
+    std::atomic_store(&observedNodeTrace_, std::shared_ptr<const std::vector<float>>{});
     converged_.clear();
     iterationConverged_.clear();
     fallbackLeft_.clear();
@@ -225,7 +264,52 @@ const neurons::engine::dsp::CycleConfig& AudioEngine::cycleConfig() const {
 }
 
 float AudioEngine::lastCpuLoadPercent() const {
-    return lastCpuLoadPercent_;
+    return lastCpuLoadPercent_.load(std::memory_order_relaxed);
+}
+
+bool AudioEngine::loadWavFileForNode(neurons::engine::core::NodeId nodeId, const std::string& path) {
+    juce::AudioFormatManager fm;
+    fm.registerBasicFormats();
+    juce::File file(path);
+    if (!file.existsAsFile() || !file.hasFileExtension(".wav")) {
+        return false;
+    }
+
+    std::unique_ptr<juce::AudioFormatReader> reader(fm.createReaderFor(file));
+    if (reader == nullptr || reader->lengthInSamples <= 0) {
+        return false;
+    }
+
+    const auto samplesCount = static_cast<int>(reader->lengthInSamples);
+    juce::AudioBuffer<float> temp(static_cast<int>(reader->numChannels), samplesCount);
+    reader->read(&temp, 0, samplesCount, 0, true, true);
+
+    std::vector<float> mono(static_cast<std::size_t>(samplesCount), 0.0f);
+    for (int i = 0; i < samplesCount; ++i) {
+        float sum = 0.0f;
+        for (unsigned int ch = 0; ch < reader->numChannels; ++ch) {
+            sum += temp.getSample(static_cast<int>(ch), i);
+        }
+        mono[static_cast<std::size_t>(i)] = sum / static_cast<float>(std::max(1u, reader->numChannels));
+    }
+
+    std::scoped_lock lock(graphMutex_);
+    sampleClips_[nodeId] = SampleClip{std::move(mono), reader->sampleRate, file.getFileName().toStdString()};
+    if (auto it = processors_.find(nodeId); it != processors_.end()) {
+        if (auto* player = dynamic_cast<neurons::engine::nodes::SamplePlayerWavNode*>(it->second.get()); player != nullptr) {
+            const auto& clip = sampleClips_[nodeId];
+            player->setClip(clip.samples, clip.sourceRate, clip.name);
+        }
+    }
+    return true;
+}
+
+std::string AudioEngine::sampleClipNameForNode(neurons::engine::core::NodeId nodeId) const {
+    std::scoped_lock lock(graphMutex_);
+    if (const auto it = sampleClips_.find(nodeId); it != sampleClips_.end()) {
+        return it->second.name;
+    }
+    return {};
 }
 
 float AudioEngine::latestScopeProbePeak() const {
@@ -239,6 +323,27 @@ neurons::engine::core::NodeId AudioEngine::latestScopeProbeNodeId() const {
 std::vector<float> AudioEngine::latestScopeProbeTrace() const {
     const auto trace = std::atomic_load(&latestScopeProbeTrace_);
     return trace != nullptr ? *trace : std::vector<float>{};
+}
+
+void AudioEngine::setObservedNode(std::optional<neurons::engine::core::NodeId> nodeId) {
+    observedNodeId_.store(nodeId.value_or(0), std::memory_order_relaxed);
+}
+
+std::optional<neurons::engine::core::NodeId> AudioEngine::observedNodeId() const {
+    const auto id = observedNodeId_.load(std::memory_order_relaxed);
+    if (id == 0) {
+        return std::nullopt;
+    }
+    return id;
+}
+
+std::vector<float> AudioEngine::observedNodeTrace() const {
+    const auto trace = std::atomic_load(&observedNodeTrace_);
+    return trace != nullptr ? *trace : std::vector<float>{};
+}
+
+float AudioEngine::observedNodePeak() const {
+    return observedNodePeak_.load(std::memory_order_relaxed);
 }
 
 neurons::engine::core::GraphModel& AudioEngine::graph() {
@@ -277,6 +382,31 @@ std::optional<float> AudioEngine::getNodeParam(neurons::engine::core::NodeId nod
     return paramIt->second;
 }
 
+void AudioEngine::setNodeScript(neurons::engine::core::NodeId nodeId, const std::string& key, const std::string& value) {
+    std::scoped_lock lock(graphMutex_);
+    nodeScripts_[nodeId][key] = value;
+    if (auto it = processors_.find(nodeId); it != processors_.end()) {
+        if (auto* bb = dynamic_cast<neurons::engine::nodes::BytebeatJsNode*>(it->second.get()); bb != nullptr) {
+            if (key == "expr") {
+                bb->setExpression(value);
+            }
+        }
+    }
+}
+
+std::string AudioEngine::getNodeScript(neurons::engine::core::NodeId nodeId, const std::string& key) const {
+    std::scoped_lock lock(graphMutex_);
+    const auto it = nodeScripts_.find(nodeId);
+    if (it == nodeScripts_.end()) {
+        return {};
+    }
+    const auto it2 = it->second.find(key);
+    if (it2 == it->second.end()) {
+        return {};
+    }
+    return it2->second;
+}
+
 AudioEngine::NodeParamMap AudioEngine::getAllNodeParams() const {
     std::scoped_lock lock(graphMutex_);
     return nodeParams_;
@@ -289,6 +419,20 @@ void AudioEngine::replaceGraphAndParams(const neurons::engine::core::GraphModel&
     processors_.clear();
     outputs_.clear();
     switchSelectState_.clear();
+    for (auto it = nodeScripts_.begin(); it != nodeScripts_.end();) {
+        if (graph_.getNode(it->first) == nullptr) {
+            it = nodeScripts_.erase(it);
+        } else {
+            ++it;
+        }
+    }
+    for (auto it = sampleClips_.begin(); it != sampleClips_.end();) {
+        if (graph_.getNode(it->first) == nullptr) {
+            it = sampleClips_.erase(it);
+        } else {
+            ++it;
+        }
+    }
 }
 
 void AudioEngine::createDefaultGraphIfEmpty() {
@@ -451,15 +595,33 @@ void AudioEngine::rebuildRuntimeGraph(const neurons::engine::core::GraphModel& g
             auto processor = createProcessor(spec.typeName);
             if (processor != nullptr) {
                 processor->reset(sampleRate_);
+                if (auto* player = dynamic_cast<neurons::engine::nodes::SamplePlayerWavNode*>(processor.get()); player != nullptr) {
+                    if (const auto clipIt = sampleClips_.find(nodeId); clipIt != sampleClips_.end()) {
+                        player->setClip(clipIt->second.samples, clipIt->second.sourceRate, clipIt->second.name);
+                    }
+                }
+                if (auto* bb = dynamic_cast<neurons::engine::nodes::BytebeatJsNode*>(processor.get()); bb != nullptr) {
+                    if (const auto scriptIt = nodeScripts_.find(nodeId); scriptIt != nodeScripts_.end()) {
+                        if (const auto exprIt = scriptIt->second.find("expr"); exprIt != scriptIt->second.end()) {
+                            bb->setExpression(exprIt->second);
+                        }
+                    }
+                }
                 processors_.emplace(nodeId, std::move(processor));
             }
         }
 
-        auto& output = outputs_[nodeId];
-        if (static_cast<int>(output.size()) != numSamples) {
-            output.assign(static_cast<std::size_t>(numSamples), 0.0f);
-        } else {
-            std::fill(output.begin(), output.end(), 0.0f);
+        const std::size_t portCount = std::max<std::size_t>(1, spec.outputs.size());
+        auto& outputs = outputs_[nodeId];
+        if (outputs.size() != portCount) {
+            outputs.assign(portCount, std::vector<float>(static_cast<std::size_t>(numSamples), 0.0f));
+        }
+        for (auto& portBuffer : outputs) {
+            if (static_cast<int>(portBuffer.size()) != numSamples) {
+                portBuffer.assign(static_cast<std::size_t>(numSamples), 0.0f);
+            } else {
+                std::fill(portBuffer.begin(), portBuffer.end(), 0.0f);
+            }
         }
     }
 
@@ -467,6 +629,8 @@ void AudioEngine::rebuildRuntimeGraph(const neurons::engine::core::GraphModel& g
         if (graph.nodes().find(it->first) == graph.nodes().end()) {
             outputs_.erase(it->first);
             nodeParams_.erase(it->first);
+            nodeScripts_.erase(it->first);
+            sampleClips_.erase(it->first);
             switchSelectState_.erase(it->first);
             it = processors_.erase(it);
         } else {
@@ -483,6 +647,21 @@ std::unique_ptr<neurons::engine::nodes::NodeProcessor> AudioEngine::createProces
     }
     if (typeName == "Add") {
         return std::make_unique<AddNode>();
+    }
+    if (typeName == "AnalogAnd") {
+        return std::make_unique<AnalogAndNode>();
+    }
+    if (typeName == "AnalogOr") {
+        return std::make_unique<AnalogOrNode>();
+    }
+    if (typeName == "AnalogXor") {
+        return std::make_unique<AnalogXorNode>();
+    }
+    if (typeName == "AnalogNand") {
+        return std::make_unique<AnalogNandNode>();
+    }
+    if (typeName == "AnalogNor") {
+        return std::make_unique<AnalogNorNode>();
     }
     if (typeName == "Multiply") {
         return std::make_unique<MultiplyNode>();
@@ -501,6 +680,9 @@ std::unique_ptr<neurons::engine::nodes::NodeProcessor> AudioEngine::createProces
     }
     if (typeName == "SlopeDetect") {
         return std::make_unique<SlopeDetectNode>();
+    }
+    if (typeName == "SchmittTrigger") {
+        return std::make_unique<SchmittTriggerNode>();
     }
     if (typeName == "AdaptiveThreshold") {
         return std::make_unique<AdaptiveThresholdNode>();
@@ -522,6 +704,9 @@ std::unique_ptr<neurons::engine::nodes::NodeProcessor> AudioEngine::createProces
     }
     if (typeName == "BurstNeuron") {
         return std::make_unique<BurstNeuronNode>();
+    }
+    if (typeName == "BytebeatJs") {
+        return std::make_unique<BytebeatJsNode>();
     }
     if (typeName == "Saturator") {
         return std::make_unique<SaturatorNode>();
@@ -586,11 +771,38 @@ std::unique_ptr<neurons::engine::nodes::NodeProcessor> AudioEngine::createProces
     if (typeName == "SampleHold") {
         return std::make_unique<SampleHoldNode>();
     }
+    if (typeName == "SampleHoldGated") {
+        return std::make_unique<SampleHoldGatedNode>();
+    }
+    if (typeName == "SampleHoldClocked") {
+        return std::make_unique<SampleHoldClockedNode>();
+    }
+    if (typeName == "SampleHoldSlew") {
+        return std::make_unique<SampleHoldSlewNode>();
+    }
+    if (typeName == "SampleHoldQuantized") {
+        return std::make_unique<SampleHoldQuantizedNode>();
+    }
+    if (typeName == "SamplePlayerWav") {
+        return std::make_unique<SamplePlayerWavNode>();
+    }
     if (typeName == "CrossfadeVCA") {
         return std::make_unique<CrossfadeVCANode>();
     }
     if (typeName == "Allpass") {
         return std::make_unique<AllpassNode>();
+    }
+    if (typeName == "AllpassBank") {
+        return std::make_unique<AllpassBankNode>();
+    }
+    if (typeName == "CombFilter") {
+        return std::make_unique<CombFilterNode>();
+    }
+    if (typeName == "DiffusionBlock") {
+        return std::make_unique<DiffusionBlockNode>();
+    }
+    if (typeName == "FeedbackTap") {
+        return std::make_unique<FeedbackTapNode>();
     }
     if (typeName == "Invert") {
         return std::make_unique<InvertNode>();
@@ -601,6 +813,9 @@ std::unique_ptr<neurons::engine::nodes::NodeProcessor> AudioEngine::createProces
     if (typeName == "Modulo") {
         return std::make_unique<ModuloNode>();
     }
+    if (typeName == "WindowComparator") {
+        return std::make_unique<WindowComparatorNode>();
+    }
 
     return nullptr;
 }
@@ -609,19 +824,19 @@ void AudioEngine::processNode(const neurons::engine::core::GraphModel& graph,
                               const RuntimeSnapshot::ParamMap& params,
                               neurons::engine::core::NodeId nodeId,
                               int numSamples) {
-    auto procIt = processors_.find(nodeId);
-    if (procIt == processors_.end()) {
-        return;
-    }
-
     auto outIt = outputs_.find(nodeId);
     if (outIt == outputs_.end()) {
+        return;
+    }
+    auto& nodeOutputs = outIt->second;
+    if (nodeOutputs.empty()) {
         return;
     }
     const auto* nodeSpec = graph.getNode(nodeId);
     if (nodeSpec == nullptr) {
         return;
     }
+    auto procIt = processors_.find(nodeId);
 
     const auto paramFor = [&](const char* key, float fallback) {
         const auto nodeIt = params.find(nodeId);
@@ -635,6 +850,59 @@ void AudioEngine::processNode(const neurons::engine::core::GraphModel& graph,
         return paramIt->second;
     };
 
+    if (nodeSpec->typeName == "MatrixMixer") {
+        const int inCount = std::min<int>(4, static_cast<int>(nodeSpec->inputs.size()));
+        const int outCount = std::min<int>(4, static_cast<int>(nodeSpec->outputs.size()));
+        const float globalGain = paramFor("global_gain", 1.0f);
+        const float globalPan = std::clamp(paramFor("global_pan", 0.0f), -1.0f, 1.0f);
+        for (int outPort = 0; outPort < outCount; ++outPort) {
+            auto& out = nodeOutputs[static_cast<std::size_t>(outPort)];
+            std::fill_n(out.begin(), numSamples, 0.0f);
+        }
+
+        for (int inPort = 0; inPort < inCount; ++inPort) {
+            gatherInputForPort(graph, nodeId, static_cast<neurons::engine::core::PortIndex>(inPort), inputA_.data(), numSamples);
+            for (int outPort = 0; outPort < outCount; ++outPort) {
+                const std::string gainKey = "g_" + std::to_string(inPort) + "_" + std::to_string(outPort);
+                const std::string panKey = "p_" + std::to_string(inPort) + "_" + std::to_string(outPort);
+                const float gain = paramFor(gainKey.c_str(), inPort == outPort ? 1.0f : 0.0f) * globalGain;
+                const float pan = std::clamp(paramFor(panKey.c_str(), 0.0f) + globalPan, -1.0f, 1.0f);
+                const float keep = 0.5f * (1.0f - pan);
+                const float spread = 0.5f * (1.0f + pan);
+                auto& outA = nodeOutputs[static_cast<std::size_t>(outPort)];
+                auto& outB = nodeOutputs[static_cast<std::size_t>((outPort + 1) % outCount)];
+                for (int i = 0; i < numSamples; ++i) {
+                    const float x = inputA_[static_cast<std::size_t>(i)] * gain;
+                    outA[static_cast<std::size_t>(i)] += x * keep;
+                    outB[static_cast<std::size_t>(i)] += x * spread;
+                }
+            }
+        }
+        const auto observedNode = observedNodeId_.load(std::memory_order_relaxed);
+        if (observedNode == nodeId) {
+            const auto& source = nodeOutputs[0];
+            constexpr std::size_t kTracePoints = 512;
+            const std::size_t srcSize = source.size();
+            const std::size_t points = std::min<std::size_t>(kTracePoints, srcSize);
+            auto trace = std::make_shared<std::vector<float>>();
+            trace->resize(points);
+            float peak = 0.0f;
+            if (points > 0 && srcSize > 0) {
+                for (std::size_t i = 0; i < points; ++i) {
+                    const std::size_t idx = (i * srcSize) / points;
+                    const float sample = source[std::min(idx, srcSize - 1)];
+                    (*trace)[i] = sample;
+                    peak = std::max(peak, std::abs(sample));
+                }
+            }
+            observedNodePeak_.store(peak, std::memory_order_relaxed);
+            std::atomic_store(&observedNodeTrace_, std::shared_ptr<const std::vector<float>>(trace));
+        }
+        return;
+    } else if (procIt == processors_.end()) {
+        return;
+    }
+
     if (nodeSpec->typeName == "Mix") {
         const int availableInputs = static_cast<int>(nodeSpec->inputs.size());
         const int fallbackInputs = std::clamp(availableInputs, 2, 8);
@@ -642,19 +910,19 @@ void AudioEngine::processNode(const neurons::engine::core::GraphModel& graph,
         const int activeInputs = std::clamp(requestedInputs, 2, std::max(2, availableInputs));
 
         for (int i = 0; i < numSamples; ++i) {
-            outIt->second[static_cast<std::size_t>(i)] = 0.0f;
+            nodeOutputs[0][static_cast<std::size_t>(i)] = 0.0f;
         }
 
         for (int port = 0; port < activeInputs; ++port) {
             gatherInputForPort(graph, nodeId, static_cast<neurons::engine::core::PortIndex>(port), inputA_.data(), numSamples);
             for (int i = 0; i < numSamples; ++i) {
-                outIt->second[static_cast<std::size_t>(i)] += inputA_[static_cast<std::size_t>(i)];
+                nodeOutputs[0][static_cast<std::size_t>(i)] += inputA_[static_cast<std::size_t>(i)];
             }
         }
 
         const float norm = 1.0f / static_cast<float>(activeInputs);
         for (int i = 0; i < numSamples; ++i) {
-            outIt->second[static_cast<std::size_t>(i)] *= norm;
+            nodeOutputs[0][static_cast<std::size_t>(i)] *= norm;
         }
         return;
     }
@@ -675,7 +943,7 @@ void AudioEngine::processNode(const neurons::engine::core::GraphModel& graph,
         if (!hasSelectConnection) {
             const bool selectB = (paramFor("select_b", 0.0f) >= 0.5f);
             for (int i = 0; i < numSamples; ++i) {
-                outIt->second[static_cast<std::size_t>(i)] = selectB ? inputB_[static_cast<std::size_t>(i)]
+                nodeOutputs[0][static_cast<std::size_t>(i)] = selectB ? inputB_[static_cast<std::size_t>(i)]
                                                                      : inputA_[static_cast<std::size_t>(i)];
             }
             switchSelectState_[nodeId] = selectB;
@@ -694,7 +962,7 @@ void AudioEngine::processNode(const neurons::engine::core::GraphModel& graph,
             } else if (selectB && selector <= kSchmittLow) {
                 selectB = false;
             }
-            outIt->second[static_cast<std::size_t>(i)] = selectB ? inputB_[static_cast<std::size_t>(i)]
+            nodeOutputs[0][static_cast<std::size_t>(i)] = selectB ? inputB_[static_cast<std::size_t>(i)]
                                                                  : inputA_[static_cast<std::size_t>(i)];
         }
         stateIt->second = selectB;
@@ -718,6 +986,41 @@ void AudioEngine::processNode(const neurons::engine::core::GraphModel& graph,
     } else if (auto* allpass = dynamic_cast<neurons::engine::nodes::AllpassNode*>(procIt->second.get()); allpass != nullptr) {
         allpass->setDelayMs(paramFor("delay_ms", 6.0f));
         allpass->setFeedback(paramFor("feedback", 0.6f));
+    } else if (auto* bank = dynamic_cast<neurons::engine::nodes::AllpassBankNode*>(procIt->second.get()); bank != nullptr) {
+        bank->setBaseDelayMs(paramFor("delay_ms", 4.0f));
+        bank->setFeedback(paramFor("feedback", 0.6f));
+        bank->setSpread(paramFor("spread", 0.35f));
+    } else if (auto* comb = dynamic_cast<neurons::engine::nodes::CombFilterNode*>(procIt->second.get()); comb != nullptr) {
+        comb->setDelayMs(paramFor("delay_ms", 18.0f));
+        comb->setFeedback(paramFor("feedback", 0.75f));
+        comb->setDamping(paramFor("damping", 0.2f));
+    } else if (auto* diff = dynamic_cast<neurons::engine::nodes::DiffusionBlockNode*>(procIt->second.get()); diff != nullptr) {
+        diff->setSizeMs(paramFor("size_ms", 12.0f));
+        diff->setFeedback(paramFor("feedback", 0.6f));
+        diff->setMix(paramFor("mix", 0.5f));
+    } else if (auto* tap = dynamic_cast<neurons::engine::nodes::FeedbackTapNode*>(procIt->second.get()); tap != nullptr) {
+        tap->setLoopMs(paramFor("loop_ms", 250.0f));
+        tap->setReinject(paramFor("reinject", 0.35f));
+        tap->setFreeze(paramFor("freeze", 0.0f) >= 0.5f);
+    } else if (auto* shGated = dynamic_cast<neurons::engine::nodes::SampleHoldGatedNode*>(procIt->second.get()); shGated != nullptr) {
+        shGated->setThreshold(paramFor("threshold", 0.5f));
+    } else if (auto* shClocked = dynamic_cast<neurons::engine::nodes::SampleHoldClockedNode*>(procIt->second.get()); shClocked != nullptr) {
+        shClocked->setLowHigh(paramFor("low", 0.3f), paramFor("high", 0.7f));
+    } else if (auto* shSlew = dynamic_cast<neurons::engine::nodes::SampleHoldSlewNode*>(procIt->second.get()); shSlew != nullptr) {
+        shSlew->setLowHigh(paramFor("low", 0.3f), paramFor("high", 0.7f));
+        shSlew->setSlewMs(paramFor("slew_ms", 8.0f));
+    } else if (auto* shQuant = dynamic_cast<neurons::engine::nodes::SampleHoldQuantizedNode*>(procIt->second.get()); shQuant != nullptr) {
+        shQuant->setThreshold(paramFor("threshold", 0.5f));
+        shQuant->setSteps(paramFor("steps", 12.0f));
+    } else if (auto* player = dynamic_cast<neurons::engine::nodes::SamplePlayerWavNode*>(procIt->second.get()); player != nullptr) {
+        player->setBaseRate(paramFor("rate", 1.0f));
+        player->setCvOctaves(paramFor("cv_octaves", 1.0f));
+    } else if (auto* schmitt = dynamic_cast<neurons::engine::nodes::SchmittTriggerNode*>(procIt->second.get()); schmitt != nullptr) {
+        schmitt->setThreshold(paramFor("threshold", 0.5f));
+        schmitt->setHysteresis(paramFor("hysteresis", 0.2f));
+    } else if (auto* window = dynamic_cast<neurons::engine::nodes::WindowComparatorNode*>(procIt->second.get()); window != nullptr) {
+        window->setCenter(paramFor("center", 0.0f));
+        window->setWidth(paramFor("width", 0.5f));
     } else if (auto* modulo = dynamic_cast<neurons::engine::nodes::ModuloNode*>(procIt->second.get()); modulo != nullptr) {
         modulo->setModulus(paramFor("modulus", 1.0f));
     } else if (auto* counter = dynamic_cast<neurons::engine::nodes::CounterNode*>(procIt->second.get()); counter != nullptr) {
@@ -763,12 +1066,12 @@ void AudioEngine::processNode(const neurons::engine::core::GraphModel& graph,
 
     procIt->second->process(std::span<const float>(inputA_.data(), static_cast<std::size_t>(numSamples)),
                             std::span<const float>(inputB_.data(), static_cast<std::size_t>(numSamples)),
-                            std::span<float>(outIt->second.data(), static_cast<std::size_t>(numSamples)));
+                            std::span<float>(nodeOutputs[0].data(), static_cast<std::size_t>(numSamples)));
 
     if (auto* probe = dynamic_cast<neurons::engine::nodes::ScopeProbeNode*>(procIt->second.get()); probe != nullptr) {
         latestScopeProbePeak_.store(probe->lastPeak(), std::memory_order_relaxed);
         latestScopeProbeNodeId_.store(nodeId, std::memory_order_relaxed);
-        const auto& source = outIt->second;
+        const auto& source = nodeOutputs[0];
         constexpr std::size_t kTracePoints = 256;
         const std::size_t srcSize = source.size();
         const std::size_t points = std::min<std::size_t>(kTracePoints, srcSize);
@@ -781,6 +1084,27 @@ void AudioEngine::processNode(const neurons::engine::core::GraphModel& graph,
             }
         }
         std::atomic_store(&latestScopeProbeTrace_, std::shared_ptr<const std::vector<float>>(trace));
+    }
+
+    const auto observedNode = observedNodeId_.load(std::memory_order_relaxed);
+    if (observedNode == nodeId) {
+        const auto& source = nodeOutputs[0];
+        constexpr std::size_t kTracePoints = 512;
+        const std::size_t srcSize = source.size();
+        const std::size_t points = std::min<std::size_t>(kTracePoints, srcSize);
+        auto trace = std::make_shared<std::vector<float>>();
+        trace->resize(points);
+        float peak = 0.0f;
+        if (points > 0 && srcSize > 0) {
+            for (std::size_t i = 0; i < points; ++i) {
+                const std::size_t idx = (i * srcSize) / points;
+                const float sample = source[std::min(idx, srcSize - 1)];
+                (*trace)[i] = sample;
+                peak = std::max(peak, std::abs(sample));
+            }
+        }
+        observedNodePeak_.store(peak, std::memory_order_relaxed);
+        std::atomic_store(&observedNodeTrace_, std::shared_ptr<const std::vector<float>>(trace));
     }
 }
 
@@ -807,7 +1131,12 @@ void AudioEngine::gatherInputForPort(const neurons::engine::core::GraphModel& gr
             continue;
         }
 
-        const auto& source = srcIt->second;
+        const auto& nodeOutputs = srcIt->second;
+        const std::size_t port = static_cast<std::size_t>(c.fromPort);
+        if (port >= nodeOutputs.size()) {
+            continue;
+        }
+        const auto& source = nodeOutputs[port];
         for (int i = 0; i < numSamples; ++i) {
             out[i] += source[static_cast<std::size_t>(i)];
         }
