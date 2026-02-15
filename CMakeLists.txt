@@ -42,6 +42,8 @@ target_sources(neuralApp PRIVATE
     src/engine/nodes/NodeProcessor.h
     src/engine/nodes/AdaptiveThresholdNode.cpp
     src/engine/nodes/AdaptiveThresholdNode.h
+    src/engine/nodes/ADEnvelopeNode.cpp
+    src/engine/nodes/ADEnvelopeNode.h
     src/engine/nodes/AnalogAndNode.cpp
     src/engine/nodes/AnalogAndNode.h
     src/engine/nodes/AnalogOrNode.cpp
@@ -84,6 +86,8 @@ target_sources(neuralApp PRIVATE
     src/engine/nodes/InvertNode.h
     src/engine/nodes/ModuloNode.cpp
     src/engine/nodes/ModuloNode.h
+    src/engine/nodes/MidiNoteToHzNode.cpp
+    src/engine/nodes/MidiNoteToHzNode.h
     src/engine/nodes/IntegratorNode.cpp
     src/engine/nodes/IntegratorNode.h
     src/engine/nodes/LeakNode.cpp

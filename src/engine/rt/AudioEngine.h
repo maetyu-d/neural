@@ -78,6 +78,7 @@ public:
         Constant,
         Compare,
         RandomGate,
+        ADEnvelope,
         SlopeDetect,
         AdaptiveThreshold,
         RefractoryGate,
@@ -87,6 +88,7 @@ public:
         DendriteNonlinearity,
         BurstNeuron,
         NeuronCore,
+        MidiNoteToHz,
         ScopeProbe,
     };
 

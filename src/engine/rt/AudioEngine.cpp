@@ -3,6 +3,7 @@
 #include "../nodes/BiquadCoreNode.h"
 #include "../nodes/AddNode.h"
 #include "../nodes/AdaptiveThresholdNode.h"
+#include "../nodes/ADEnvelopeNode.h"
 #include "../nodes/AnalogAndNode.h"
 #include "../nodes/AnalogNandNode.h"
 #include "../nodes/AnalogNorNode.h"
@@ -25,6 +26,7 @@
 #include "../nodes/IntegratorNode.h"
 #include "../nodes/LeakNode.h"
 #include "../nodes/MixNode.h"
+#include "../nodes/MidiNoteToHzNode.h"
 #include "../nodes/ModuloNode.h"
 #include "../nodes/NeuronCoreNode.h"
 #include "../nodes/NoiseNode.h"
@@ -132,6 +134,7 @@ AudioEngine::ProcessorKind kindForTypeName(const std::string& typeName) {
     if (typeName == "Constant") return K::Constant;
     if (typeName == "Compare") return K::Compare;
     if (typeName == "RandomGate") return K::RandomGate;
+    if (typeName == "ADEnvelope") return K::ADEnvelope;
     if (typeName == "SlopeDetect") return K::SlopeDetect;
     if (typeName == "AdaptiveThreshold") return K::AdaptiveThreshold;
     if (typeName == "RefractoryGate") return K::RefractoryGate;
@@ -141,6 +144,7 @@ AudioEngine::ProcessorKind kindForTypeName(const std::string& typeName) {
     if (typeName == "DendriteNonlinearity") return K::DendriteNonlinearity;
     if (typeName == "BurstNeuron") return K::BurstNeuron;
     if (typeName == "NeuronCore") return K::NeuronCore;
+    if (typeName == "MidiNoteToHz") return K::MidiNoteToHz;
     if (typeName == "ScopeProbe") return K::ScopeProbe;
     return K::Unknown;
 }
@@ -190,6 +194,7 @@ void AudioEngine::prepareToPlay(int maxBlockSize, double sampleRate) {
 }
 
 void AudioEngine::processBlock(float* left, float* right, int numSamples) {
+    std::scoped_lock lock(graphMutex_);
     const auto blockStart = std::chrono::high_resolution_clock::now();
 
     if (numSamples <= 0 || left == nullptr || right == nullptr) {
@@ -690,6 +695,9 @@ std::unique_ptr<neurons::engine::nodes::NodeProcessor> AudioEngine::createProces
     if (typeName == "RandomGate") {
         return std::make_unique<RandomGateNode>();
     }
+    if (typeName == "ADEnvelope") {
+        return std::make_unique<ADEnvelopeNode>();
+    }
     if (typeName == "Switch") {
         return std::make_unique<SwitchNode>();
     }
@@ -827,6 +835,9 @@ std::unique_ptr<neurons::engine::nodes::NodeProcessor> AudioEngine::createProces
     }
     if (typeName == "Modulo") {
         return std::make_unique<ModuloNode>();
+    }
+    if (typeName == "MidiNoteToHz") {
+        return std::make_unique<MidiNoteToHzNode>();
     }
     if (typeName == "WindowComparator") {
         return std::make_unique<WindowComparatorNode>();
@@ -1268,6 +1279,12 @@ void AudioEngine::processNode(const neurons::engine::core::GraphModel& graph,
         n->setPulseMs(paramFor("pulse_ms", 2.0f));
         break;
     }
+    case ProcessorKind::ADEnvelope: {
+        auto* n = static_cast<neurons::engine::nodes::ADEnvelopeNode*>(procIt->second.get());
+        n->setAttackMs(paramFor("attack_ms", 8.0f));
+        n->setDecayMs(paramFor("decay_ms", 120.0f));
+        break;
+    }
     case ProcessorKind::SlopeDetect:
         static_cast<neurons::engine::nodes::SlopeDetectNode*>(procIt->second.get())->setThreshold(paramFor("threshold", 1.0e-4f));
         break;
@@ -1319,6 +1336,10 @@ void AudioEngine::processNode(const neurons::engine::core::GraphModel& graph,
         n->setParams(p);
         break;
     }
+    case ProcessorKind::MidiNoteToHz:
+        static_cast<neurons::engine::nodes::MidiNoteToHzNode*>(procIt->second.get())
+            ->setQuantizeToNearestInt(paramFor("quantize", 0.0f) >= 0.5f);
+        break;
     default:
         break;
     }

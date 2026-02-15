@@ -524,6 +524,7 @@ void MainComponent::showNodePaletteMenu() {
     sources.addItem(33, "Drift");
     sources.addItem(31, "OscillatorPhase");
     sources.addItem(5, "Constant");
+    sources.addItem(36, "MidiNoteToHz");
 
     juce::PopupMenu neurons;
     neurons.addItem(10, "NeuronCore");
@@ -585,6 +586,7 @@ void MainComponent::showNodePaletteMenu() {
     timingControl.addItem(15, "Pulse");
     timingControl.addItem(17, "Slew");
     timingControl.addItem(52, "RandomGate");
+    timingControl.addItem(94, "ADEnvelope");
     timingControl.addItem(68, "SchmittTrigger");
     timingControl.addItem(48, "Counter");
     timingControl.addItem(56, "SampleHoldGated");
@@ -661,6 +663,7 @@ void MainComponent::showNodePaletteMenu() {
                            case 33: safeThis->addNodeType("Drift"); break;
                            case 34: safeThis->addNodeType("SamplePlayerWav"); break;
                            case 35: safeThis->addNodeType("BytebeatJs"); break;
+                           case 36: safeThis->addNodeType("MidiNoteToHz"); break;
                            case 40: safeThis->addNodeType("PhaseOps"); break;
                            case 41: safeThis->addNodeType("DelayShort"); break;
                            case 42: safeThis->addNodeType("BiquadCore"); break;
@@ -687,6 +690,7 @@ void MainComponent::showNodePaletteMenu() {
                            case 67: safeThis->addNodeType("AnalogNor"); break;
                            case 51: safeThis->addNodeType("Compare"); break;
                            case 52: safeThis->addNodeType("RandomGate"); break;
+                           case 94: safeThis->addNodeType("ADEnvelope"); break;
                            case 53: safeThis->addNodeType("Switch"); break;
                            case 54: safeThis->addNodeType("SlopeDetect"); break;
                            case 55: safeThis->addNodeType("MatrixMixer"); break;
@@ -1495,6 +1499,18 @@ void MainComponent::refreshInspector() {
         modeToggle_.setToggleState(audioEngine_.getNodeParam(*inspectedNodeId_, "wrap").value_or(1.0f) >= 0.5f,
                                    juce::dontSendNotification);
         modeToggle_.setVisible(true);
+    } else if (inspectedNodeType_ == "MidiNoteToHz") {
+        inspectorTitle_.setText("Inspector: MidiNoteToHz", juce::dontSendNotification);
+        paramA_.setVisible(false);
+        paramB_.setVisible(false);
+        paramALabel_.setVisible(false);
+        paramBLabel_.setVisible(false);
+        modeLabel_.setText("Mode", juce::dontSendNotification);
+        modeLabel_.setVisible(true);
+        modeToggle_.setButtonText("Quantize Note");
+        modeToggle_.setToggleState(audioEngine_.getNodeParam(*inspectedNodeId_, "quantize").value_or(0.0f) >= 0.5f,
+                                   juce::dontSendNotification);
+        modeToggle_.setVisible(true);
     } else if (inspectedNodeType_ == "Constant") {
         inspectorTitle_.setText("Inspector: Constant", juce::dontSendNotification);
         paramAKey_ = "value";
@@ -1565,6 +1581,20 @@ void MainComponent::refreshInspector() {
         paramB_.setSkewFactorFromMidPoint(2.0);
         paramA_.setValue(audioEngine_.getNodeParam(*inspectedNodeId_, paramAKey_).value_or(0.5f), juce::dontSendNotification);
         paramB_.setValue(audioEngine_.getNodeParam(*inspectedNodeId_, paramBKey_).value_or(2.0f), juce::dontSendNotification);
+        paramB_.setVisible(true);
+        paramBLabel_.setVisible(true);
+    } else if (inspectedNodeType_ == "ADEnvelope") {
+        inspectorTitle_.setText("Inspector: ADEnvelope", juce::dontSendNotification);
+        paramAKey_ = "attack_ms";
+        paramBKey_ = "decay_ms";
+        paramALabel_.setText("Attack (ms)", juce::dontSendNotification);
+        paramBLabel_.setText("Decay (ms)", juce::dontSendNotification);
+        paramA_.setRange(0.02, 2000.0, 0.01);
+        paramB_.setRange(0.02, 5000.0, 0.01);
+        paramA_.setSkewFactorFromMidPoint(8.0);
+        paramB_.setSkewFactorFromMidPoint(120.0);
+        paramA_.setValue(audioEngine_.getNodeParam(*inspectedNodeId_, paramAKey_).value_or(8.0f), juce::dontSendNotification);
+        paramB_.setValue(audioEngine_.getNodeParam(*inspectedNodeId_, paramBKey_).value_or(120.0f), juce::dontSendNotification);
         paramB_.setVisible(true);
         paramBLabel_.setVisible(true);
     } else if (inspectedNodeType_ == "Compare") {
@@ -1829,6 +1859,8 @@ void MainComponent::applyInspectorValues() {
         audioEngine_.setNodeParam(*inspectedNodeId_, "select_b", modeToggle_.getToggleState() ? 1.0f : 0.0f);
     } else if (inspectedNodeType_ == "FeedbackTap" && modeToggle_.isVisible()) {
         audioEngine_.setNodeParam(*inspectedNodeId_, "freeze", modeToggle_.getToggleState() ? 1.0f : 0.0f);
+    } else if (inspectedNodeType_ == "MidiNoteToHz" && modeToggle_.isVisible()) {
+        audioEngine_.setNodeParam(*inspectedNodeId_, "quantize", modeToggle_.getToggleState() ? 1.0f : 0.0f);
     } else if (inspectedNodeType_ == "OutputStereo" && modeToggle_.isVisible()) {
         const bool enabled = modeToggle_.getToggleState();
         audioEngine_.setNodeParam(*inspectedNodeId_, "record_enabled", enabled ? 1.0f : 0.0f);

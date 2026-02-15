@@ -932,6 +932,16 @@ neurons::engine::core::NodeSpec PatchCanvas::makeSpec(neurons::engine::core::Nod
         };
         return spec;
     }
+    if (typeName == "ADEnvelope") {
+        spec.inputs = {
+            PortSpec{0, SignalType::GateAudio, "trig"},
+            PortSpec{1, SignalType::BipolarAudio, "time_mod"},
+        };
+        spec.outputs = {
+            PortSpec{0, SignalType::BipolarAudio, "env"},
+        };
+        return spec;
+    }
     if (typeName == "Switch") {
         spec.inputs = {
             PortSpec{0, SignalType::BipolarAudio, "a"},
@@ -1194,6 +1204,11 @@ neurons::engine::core::NodeSpec PatchCanvas::makeSpec(neurons::engine::core::Nod
     if (typeName == "Modulo") {
         spec.inputs = {{0, SignalType::BipolarAudio, "in"}, {1, SignalType::BipolarAudio, "mod"}};
         spec.outputs = {{0, SignalType::BipolarAudio, "out"}};
+        return spec;
+    }
+    if (typeName == "MidiNoteToHz") {
+        spec.inputs = {{0, SignalType::BipolarAudio, "midi_note"}, {1, SignalType::BipolarAudio, "transpose"}};
+        spec.outputs = {{0, SignalType::HzAudio, "hz_out"}};
         return spec;
     }
     if (typeName == "WindowComparator") {

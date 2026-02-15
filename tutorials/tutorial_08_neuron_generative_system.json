@@ -1,0 +1,844 @@
+{
+  "schema_version": 1,
+  "app": "neural",
+  "nodes": [
+    {
+      "id": 22,
+      "type": "Multiply",
+      "inputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "a"
+        },
+        {
+          "index": 1,
+          "type": "BipolarAudio",
+          "name": "b"
+        }
+      ],
+      "outputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "product"
+        }
+      ],
+      "x": 1120.0,
+      "y": 240.0
+    },
+    {
+      "id": 21,
+      "type": "ADEnvelope",
+      "inputs": [
+        {
+          "index": 0,
+          "type": "GateAudio",
+          "name": "trig"
+        },
+        {
+          "index": 1,
+          "type": "BipolarAudio",
+          "name": "time_mod"
+        }
+      ],
+      "outputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "env"
+        }
+      ],
+      "x": 1040.0,
+      "y": 460.0
+    },
+    {
+      "id": 20,
+      "type": "Multiply",
+      "inputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "a"
+        },
+        {
+          "index": 1,
+          "type": "BipolarAudio",
+          "name": "b"
+        }
+      ],
+      "outputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "product"
+        }
+      ],
+      "x": 980.0,
+      "y": 320.0
+    },
+    {
+      "id": 19,
+      "type": "ScopeProbe",
+      "inputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "in"
+        },
+        {
+          "index": 1,
+          "type": "BipolarAudio",
+          "name": "monitor_mod"
+        }
+      ],
+      "outputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "through"
+        }
+      ],
+      "x": 1400.0,
+      "y": 180.0
+    },
+    {
+      "id": 18,
+      "type": "Multiply",
+      "inputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "a"
+        },
+        {
+          "index": 1,
+          "type": "BipolarAudio",
+          "name": "b"
+        }
+      ],
+      "outputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "product"
+        }
+      ],
+      "x": 620.0,
+      "y": 560.0
+    },
+    {
+      "id": 17,
+      "type": "Drift",
+      "inputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "in"
+        },
+        {
+          "index": 1,
+          "type": "BipolarAudio",
+          "name": "drift_mod"
+        }
+      ],
+      "outputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "out"
+        }
+      ],
+      "x": 300.0,
+      "y": 560.0
+    },
+    {
+      "id": 16,
+      "type": "NeuronCore",
+      "inputs": [
+        {
+          "index": 0,
+          "type": "GateAudio",
+          "name": "in_a_gate"
+        },
+        {
+          "index": 1,
+          "type": "BipolarAudio",
+          "name": "in_b"
+        }
+      ],
+      "outputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "out"
+        }
+      ],
+      "x": 460.0,
+      "y": 560.0
+    },
+    {
+      "id": 15,
+      "type": "Saturator",
+      "inputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "in"
+        },
+        {
+          "index": 1,
+          "type": "BipolarAudio",
+          "name": "side"
+        }
+      ],
+      "outputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "out"
+        }
+      ],
+      "x": 1200.0,
+      "y": 300.0
+    },
+    {
+      "id": 14,
+      "type": "BiquadCore",
+      "inputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "in"
+        },
+        {
+          "index": 1,
+          "type": "HzAudio",
+          "name": "cutoff"
+        }
+      ],
+      "outputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "out"
+        }
+      ],
+      "x": 1020.0,
+      "y": 180.0
+    },
+    {
+      "id": 13,
+      "type": "UnitConvert",
+      "inputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "in"
+        },
+        {
+          "index": 1,
+          "type": "BipolarAudio",
+          "name": "scale_mod"
+        }
+      ],
+      "outputs": [
+        {
+          "index": 0,
+          "type": "HzAudio",
+          "name": "out"
+        }
+      ],
+      "x": 932.890625,
+      "y": 397.8359375
+    },
+    {
+      "id": 12,
+      "type": "Add",
+      "inputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "a"
+        },
+        {
+          "index": 1,
+          "type": "BipolarAudio",
+          "name": "b"
+        }
+      ],
+      "outputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "sum"
+        }
+      ],
+      "x": 762.15234375,
+      "y": 411.7734375
+    },
+    {
+      "id": 11,
+      "type": "Multiply",
+      "inputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "a"
+        },
+        {
+          "index": 1,
+          "type": "BipolarAudio",
+          "name": "b"
+        }
+      ],
+      "outputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "product"
+        }
+      ],
+      "x": 620.0,
+      "y": 320.0
+    },
+    {
+      "id": 10,
+      "type": "SampleHoldClocked",
+      "inputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "in"
+        },
+        {
+          "index": 1,
+          "type": "GateAudio",
+          "name": "clock_gate"
+        }
+      ],
+      "outputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "out"
+        }
+      ],
+      "x": 460.0,
+      "y": 320.0
+    },
+    {
+      "id": 9,
+      "type": "SchmittTrigger",
+      "inputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "in"
+        },
+        {
+          "index": 1,
+          "type": "BipolarAudio",
+          "name": "threshold_cv"
+        }
+      ],
+      "outputs": [
+        {
+          "index": 0,
+          "type": "GateAudio",
+          "name": "gate"
+        }
+      ],
+      "x": 300.0,
+      "y": 440.0
+    },
+    {
+      "id": 8,
+      "type": "Oscillator",
+      "inputs": [
+        {
+          "index": 0,
+          "type": "HzAudio",
+          "name": "freq_hz"
+        },
+        {
+          "index": 1,
+          "type": "BipolarAudio",
+          "name": "phase_mod"
+        },
+        {
+          "index": 2,
+          "type": "TriggerAudio",
+          "name": "wave_mod"
+        }
+      ],
+      "outputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "out"
+        }
+      ],
+      "x": 120.0,
+      "y": 440.0
+    },
+    {
+      "id": 7,
+      "type": "MidiNoteToHz",
+      "inputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "midi_note"
+        },
+        {
+          "index": 1,
+          "type": "BipolarAudio",
+          "name": "transpose"
+        }
+      ],
+      "outputs": [
+        {
+          "index": 0,
+          "type": "HzAudio",
+          "name": "hz_out"
+        }
+      ],
+      "x": 748.0390625,
+      "y": 73.61328125
+    },
+    {
+      "id": 6,
+      "type": "Add",
+      "inputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "a"
+        },
+        {
+          "index": 1,
+          "type": "BipolarAudio",
+          "name": "b"
+        }
+      ],
+      "outputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "sum"
+        }
+      ],
+      "x": 620.0,
+      "y": 180.0
+    },
+    {
+      "id": 5,
+      "type": "Multiply",
+      "inputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "a"
+        },
+        {
+          "index": 1,
+          "type": "BipolarAudio",
+          "name": "b"
+        }
+      ],
+      "outputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "product"
+        }
+      ],
+      "x": 460.0,
+      "y": 180.0
+    },
+    {
+      "id": 4,
+      "type": "SampleHoldClocked",
+      "inputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "in"
+        },
+        {
+          "index": 1,
+          "type": "GateAudio",
+          "name": "clock_gate"
+        }
+      ],
+      "outputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "out"
+        }
+      ],
+      "x": 300.0,
+      "y": 180.0
+    },
+    {
+      "id": 3,
+      "type": "Noise",
+      "inputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "seed_mod"
+        },
+        {
+          "index": 1,
+          "type": "BipolarAudio",
+          "name": "aux"
+        }
+      ],
+      "outputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "noise"
+        }
+      ],
+      "x": 120.0,
+      "y": 180.0
+    },
+    {
+      "id": 2,
+      "type": "Oscillator",
+      "inputs": [
+        {
+          "index": 0,
+          "type": "HzAudio",
+          "name": "freq_hz"
+        },
+        {
+          "index": 1,
+          "type": "BipolarAudio",
+          "name": "phase_mod"
+        },
+        {
+          "index": 2,
+          "type": "GateAudio",
+          "name": "wave_mod"
+        }
+      ],
+      "outputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "out"
+        }
+      ],
+      "x": 860.0,
+      "y": 180.0
+    },
+    {
+      "id": 1,
+      "type": "OutputStereo",
+      "inputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "in_l"
+        },
+        {
+          "index": 1,
+          "type": "BipolarAudio",
+          "name": "in_r"
+        }
+      ],
+      "outputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "tap"
+        }
+      ],
+      "x": 1400.0,
+      "y": 300.0
+    }
+  ],
+  "connections": [
+    {
+      "from_node": 8,
+      "from_port": 0,
+      "to_node": 9,
+      "to_port": 0
+    },
+    {
+      "from_node": 9,
+      "from_port": 0,
+      "to_node": 4,
+      "to_port": 1
+    },
+    {
+      "from_node": 9,
+      "from_port": 0,
+      "to_node": 10,
+      "to_port": 1
+    },
+    {
+      "from_node": 9,
+      "from_port": 0,
+      "to_node": 2,
+      "to_port": 2
+    },
+    {
+      "from_node": 3,
+      "from_port": 0,
+      "to_node": 4,
+      "to_port": 0
+    },
+    {
+      "from_node": 4,
+      "from_port": 0,
+      "to_node": 5,
+      "to_port": 0
+    },
+    {
+      "from_node": 5,
+      "from_port": 0,
+      "to_node": 6,
+      "to_port": 0
+    },
+    {
+      "from_node": 6,
+      "from_port": 0,
+      "to_node": 7,
+      "to_port": 0
+    },
+    {
+      "from_node": 18,
+      "from_port": 0,
+      "to_node": 7,
+      "to_port": 1
+    },
+    {
+      "from_node": 7,
+      "from_port": 0,
+      "to_node": 2,
+      "to_port": 0
+    },
+    {
+      "from_node": 3,
+      "from_port": 0,
+      "to_node": 10,
+      "to_port": 0
+    },
+    {
+      "from_node": 10,
+      "from_port": 0,
+      "to_node": 11,
+      "to_port": 0
+    },
+    {
+      "from_node": 11,
+      "from_port": 0,
+      "to_node": 12,
+      "to_port": 0
+    },
+    {
+      "from_node": 12,
+      "from_port": 0,
+      "to_node": 13,
+      "to_port": 0
+    },
+    {
+      "from_node": 13,
+      "from_port": 0,
+      "to_node": 14,
+      "to_port": 1
+    },
+    {
+      "from_node": 2,
+      "from_port": 0,
+      "to_node": 14,
+      "to_port": 0
+    },
+    {
+      "from_node": 8,
+      "from_port": 0,
+      "to_node": 17,
+      "to_port": 0
+    },
+    {
+      "from_node": 17,
+      "from_port": 0,
+      "to_node": 16,
+      "to_port": 1
+    },
+    {
+      "from_node": 9,
+      "from_port": 0,
+      "to_node": 16,
+      "to_port": 0
+    },
+    {
+      "from_node": 16,
+      "from_port": 0,
+      "to_node": 18,
+      "to_port": 0
+    },
+    {
+      "from_node": 15,
+      "from_port": 0,
+      "to_node": 19,
+      "to_port": 0
+    },
+    {
+      "from_node": 19,
+      "from_port": 0,
+      "to_node": 1,
+      "to_port": 0
+    },
+    {
+      "from_node": 19,
+      "from_port": 0,
+      "to_node": 1,
+      "to_port": 1
+    },
+    {
+      "from_node": 10,
+      "from_port": 0,
+      "to_node": 20,
+      "to_port": 0
+    },
+    {
+      "from_node": 20,
+      "from_port": 0,
+      "to_node": 2,
+      "to_port": 1
+    },
+    {
+      "from_node": 20,
+      "from_port": 0,
+      "to_node": 15,
+      "to_port": 1
+    },
+    {
+      "from_node": 14,
+      "from_port": 0,
+      "to_node": 22,
+      "to_port": 0
+    },
+    {
+      "from_node": 21,
+      "from_port": 0,
+      "to_node": 22,
+      "to_port": 1
+    },
+    {
+      "from_node": 22,
+      "from_port": 0,
+      "to_node": 15,
+      "to_port": 0
+    },
+    {
+      "from_node": 9,
+      "from_port": 0,
+      "to_node": 21,
+      "to_port": 0
+    },
+    {
+      "from_node": 10,
+      "from_port": 0,
+      "to_node": 21,
+      "to_port": 1
+    }
+  ],
+  "params": [
+    {
+      "id": 21,
+      "values": {
+        "decay_ms": 120.0,
+        "attack_ms": 8.0
+      }
+    },
+    {
+      "id": 15,
+      "values": {
+        "drive": 1.350000023841858
+      }
+    },
+    {
+      "id": 9,
+      "values": {
+        "hysteresis": 0.200000002980232,
+        "threshold": 0.0
+      }
+    },
+    {
+      "id": 20,
+      "values": {
+        "multiplicand": 28.0
+      }
+    },
+    {
+      "id": 18,
+      "values": {
+        "multiplicand": 6.0
+      }
+    },
+    {
+      "id": 14,
+      "values": {
+        "cutoff_hz": 500.0
+      }
+    },
+    {
+      "id": 12,
+      "values": {
+        "b_value": 3000.0
+      }
+    },
+    {
+      "id": 11,
+      "values": {
+        "multiplicand": 9000.0
+      }
+    },
+    {
+      "id": 8,
+      "values": {
+        "waveform": 3.0,
+        "freq_hz": 3.400000095367432
+      }
+    },
+    {
+      "id": 6,
+      "values": {
+        "b_value": 52.0
+      }
+    },
+    {
+      "id": 16,
+      "values": {
+        "tau_ms": 35.0,
+        "gain": 1.299999952316284
+      }
+    },
+    {
+      "id": 5,
+      "values": {
+        "multiplicand": 22.0
+      }
+    },
+    {
+      "id": 7,
+      "values": {
+        "quantize": 1.0
+      }
+    },
+    {
+      "id": 2,
+      "values": {
+        "waveform": 0.0
+      }
+    }
+  ]
+}
