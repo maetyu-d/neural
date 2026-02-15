@@ -12,11 +12,12 @@ void SaturatorNode::setDrive(float drive) {
 void SaturatorNode::reset(double) {}
 
 void SaturatorNode::process(std::span<const float> inA,
-                            std::span<const float>,
+                            std::span<const float> inB,
                             std::span<float> out) {
-    const auto n = std::min(inA.size(), out.size());
+    const auto n = std::min({inA.size(), inB.size(), out.size()});
     for (std::size_t i = 0; i < n; ++i) {
-        out[i] = std::tanh(inA[i] * drive_);
+        const float dynDrive = std::max(0.001f, drive_ * (1.0f + (0.75f * inB[i])));
+        out[i] = std::tanh(inA[i] * dynDrive);
     }
 }
 

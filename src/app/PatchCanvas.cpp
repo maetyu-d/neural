@@ -1,7 +1,9 @@
 #include "PatchCanvas.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
+#include <cstdint>
 #include <limits>
 #include <mutex>
 #include <unordered_set>
@@ -18,6 +20,56 @@ constexpr float kPortSpacingY = 11.0f;
 
 bool isConverterFeasible(neurons::engine::core::SignalType from, neurons::engine::core::SignalType to) {
     return from != to;
+}
+
+bool isModulationInputName(const std::string& name) {
+    auto lower = name;
+    std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c) {
+        return static_cast<char>(std::tolower(c));
+    });
+
+    static constexpr const char* kAudioPathNames[] = {
+        "in", "in1", "in2", "in3", "in4", "in_l", "in_r", "a", "b", "pre",
+    };
+    for (const auto* n : kAudioPathNames) {
+        if (lower == n) {
+            return false;
+        }
+    }
+
+    static constexpr const char* kModTokens[] = {
+        "mod", "cv", "mix", "cutoff", "time", "delay", "feedback", "damping", "spread",
+        "size", "drive", "bias", "threshold", "center", "prob", "rate", "freeze", "aux",
+        "side", "phase",
+    };
+    for (const auto* token : kModTokens) {
+        if (lower.find(token) != std::string::npos) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool isModulationInputPort(const neurons::engine::core::NodeSpec* spec, neurons::engine::core::PortIndex port) {
+    if (spec == nullptr) {
+        return false;
+    }
+    const auto it = std::find_if(spec->inputs.begin(), spec->inputs.end(), [&](const auto& p) {
+        return p.index == port;
+    });
+    if (it == spec->inputs.end()) {
+        return false;
+    }
+    return isModulationInputName(it->name);
+}
+
+bool isBitVisualizerNode(const std::string& typeName) {
+    if (typeName.rfind("Bit", 0) == 0) {
+        return true;
+    }
+    return typeName == "ShiftLeft" || typeName == "ShiftRight" || typeName == "RotateLeft" ||
+           typeName == "RotateRight" || typeName == "Popcount" || typeName == "Parity" ||
+           typeName == "LeadingZeros" || typeName == "TrailingZeros" || typeName == "ByteSwap";
 }
 } // namespace
 
@@ -65,9 +117,13 @@ void PatchCanvas::paint(juce::Graphics& g) {
         path.startNewSubPath(start);
         path.cubicTo(start.translated(dx, 0.0f), end.translated(-dx, 0.0f), end);
 
+        const auto* toSpec = graph.getNode(connection.toNode);
+        const bool modConnection = isModulationInputPort(toSpec, connection.toPort);
         const bool selectedConnection = isConnectionSelected(connection);
-        g.setColour(selectedConnection ? juce::Colour::fromRGB(168, 210, 248)
-                                       : juce::Colour::fromRGB(136, 182, 226));
+        g.setColour(selectedConnection ? (modConnection ? juce::Colour::fromRGB(255, 214, 156)
+                                                        : juce::Colour::fromRGB(168, 210, 248))
+                                       : (modConnection ? juce::Colour::fromRGB(244, 176, 94)
+                                                        : juce::Colour::fromRGB(136, 182, 226)));
         g.strokePath(path, juce::PathStrokeType(selectedConnection ? 2.2f : 1.6f));
     }
 
@@ -110,10 +166,17 @@ void PatchCanvas::paint(juce::Graphics& g) {
         const auto rect = nodeBoundsScreen(node);
 
         const bool selected = std::find(selected_.begin(), selected_.end(), id) != selected_.end();
-        g.setColour(selected ? juce::Colour::fromRGB(222, 227, 234) : juce::Colour::fromRGB(238, 242, 246));
+        const bool isConverter = (node.typeName == "UnitConvert");
+        g.setColour(isConverter ? (selected ? juce::Colour::fromRGB(248, 222, 118)
+                                            : juce::Colour::fromRGB(238, 206, 92))
+                                : (selected ? juce::Colour::fromRGB(222, 227, 234)
+                                            : juce::Colour::fromRGB(238, 242, 246)));
         g.fillRoundedRectangle(rect, 8.0f);
 
-        g.setColour(selected ? juce::Colour::fromRGB(72, 98, 128) : juce::Colour::fromRGB(108, 116, 126));
+        g.setColour(isConverter ? (selected ? juce::Colour::fromRGB(170, 126, 28)
+                                            : juce::Colour::fromRGB(146, 108, 20))
+                                : (selected ? juce::Colour::fromRGB(72, 98, 128)
+                                            : juce::Colour::fromRGB(108, 116, 126)));
         g.drawRoundedRectangle(rect, 8.0f, 1.4f);
 
         g.setColour(juce::Colour::fromRGB(32, 36, 42));
@@ -122,6 +185,21 @@ void PatchCanvas::paint(juce::Graphics& g) {
                    rect.reduced(6.0f).toNearestInt(),
                    juce::Justification::centred,
                    true);
+
+        if (isBitVisualizerNode(node.typeName)) {
+            const auto word = engine_.latestBitWord(id);
+            const std::uint16_t value = word.value_or(0u);
+            const auto bar = rect.withTrimmedLeft(8.0f).withTrimmedRight(8.0f).removeFromBottom(9.0f);
+            const float cellW = (bar.getWidth() - 15.0f) / 16.0f;
+            for (int bit = 0; bit < 16; ++bit) {
+                const float x = bar.getX() + static_cast<float>(bit) * (cellW + 1.0f);
+                const juce::Rectangle<float> cell(x, bar.getY(), std::max(1.0f, cellW), 6.0f);
+                const bool on = ((value >> (15 - bit)) & 0x1u) != 0u;
+                g.setColour(on ? juce::Colour::fromRGB(242, 236, 184)
+                               : juce::Colour::fromRGBA(104, 110, 118, 190));
+                g.fillRoundedRectangle(cell, 1.5f);
+            }
+        }
 
         const auto* spec = graph.getNode(id);
         if (spec == nullptr) {
@@ -132,9 +210,12 @@ void PatchCanvas::paint(juce::Graphics& g) {
             const auto p = inputPortPos(node, in.index);
             bool hovered = hoverPort_.has_value() && hoverPort_->nodeId == id && hoverPort_->isInput &&
                            hoverPort_->port == in.index;
+            const bool isMod = isModulationInputName(in.name);
             if (hovered) {
                 g.setColour(hoverIsValid_ ? juce::Colour::fromRGB(88, 156, 112)
                                           : juce::Colour::fromRGB(170, 102, 102));
+            } else if (isMod) {
+                g.setColour(juce::Colour::fromRGB(214, 154, 84));
             } else {
                 g.setColour(juce::Colour::fromRGB(98, 106, 118));
             }
@@ -408,6 +489,24 @@ void PatchCanvas::mouseWheelMove(const juce::MouseEvent& event, const juce::Mous
 bool PatchCanvas::keyPressed(const juce::KeyPress& key) {
     if (key.getModifiers().isCommandDown()) {
         const auto ch = key.getTextCharacter();
+        if (ch == 'a' || ch == 'A') {
+            autoInsertConvertersEnabled_ = !autoInsertConvertersEnabled_;
+            repaint();
+            return true;
+        }
+        if (ch == 's' || ch == 'S') {
+            selected_.clear();
+            selectedConnections_.clear();
+            for (const auto id : drawOrder_) {
+                if (visuals_.find(id) != visuals_.end()) {
+                    selected_.push_back(id);
+                }
+            }
+            const auto& connections = engine_.graph().connections();
+            selectedConnections_.assign(connections.begin(), connections.end());
+            repaint();
+            return true;
+        }
         if (ch == 'c' || ch == 'C') {
             copySelection();
             return true;
@@ -491,7 +590,8 @@ void PatchCanvas::syncFromGraph() {
     const auto& graph = engine_.graph();
 
     for (const auto& [id, spec] : graph.nodes()) {
-        if (visuals_.find(id) != visuals_.end()) {
+        if (auto it = visuals_.find(id); it != visuals_.end()) {
+            it->second.typeName = spec.typeName;
             continue;
         }
 
@@ -738,6 +838,70 @@ neurons::engine::core::NodeSpec PatchCanvas::makeSpec(neurons::engine::core::Nod
         };
         return spec;
     }
+    if (typeName == "Divide") {
+        spec.inputs = {
+            PortSpec{0, SignalType::BipolarAudio, "a"},
+            PortSpec{1, SignalType::BipolarAudio, "b"},
+        };
+        spec.outputs = {
+            PortSpec{0, SignalType::BipolarAudio, "quotient"},
+        };
+        return spec;
+    }
+    if (typeName == "BitAnd" || typeName == "BitOr" || typeName == "BitXor" ||
+        typeName == "BitMask" || typeName == "BitPack") {
+        spec.inputs = {
+            PortSpec{0, SignalType::BipolarAudio, "a"},
+            PortSpec{1, SignalType::BipolarAudio, "b_value_mod"},
+        };
+        spec.outputs = {
+            PortSpec{0, SignalType::BipolarAudio, "out"},
+        };
+        return spec;
+    }
+    if (typeName == "BitNot" || typeName == "ByteSwap" || typeName == "Popcount" ||
+        typeName == "Parity" || typeName == "LeadingZeros" || typeName == "TrailingZeros") {
+        spec.inputs = {
+            PortSpec{0, SignalType::BipolarAudio, "in"},
+            PortSpec{1, SignalType::BipolarAudio, "b_value_mod"},
+        };
+        spec.outputs = {
+            PortSpec{0, SignalType::BipolarAudio, "out"},
+        };
+        return spec;
+    }
+    if (typeName == "ShiftLeft" || typeName == "ShiftRight" || typeName == "RotateLeft" ||
+        typeName == "RotateRight" || typeName == "BitSet" || typeName == "BitClear" ||
+        typeName == "BitToggle" || typeName == "BitExtract" || typeName == "BitUnpack") {
+        spec.inputs = {
+            PortSpec{0, SignalType::BipolarAudio, "a"},
+            PortSpec{1, SignalType::BipolarAudio, "index_mod"},
+        };
+        spec.outputs = {
+            PortSpec{0, SignalType::BipolarAudio, "out"},
+        };
+        return spec;
+    }
+    if (typeName == "BitCrush" || typeName == "BitQuantize") {
+        spec.inputs = {
+            PortSpec{0, SignalType::BipolarAudio, "in"},
+            PortSpec{1, SignalType::BipolarAudio, "bits_mod"},
+        };
+        spec.outputs = {
+            PortSpec{0, SignalType::BipolarAudio, "out"},
+        };
+        return spec;
+    }
+    if (typeName == "BitDelayPerBit") {
+        spec.inputs = {
+            PortSpec{0, SignalType::BipolarAudio, "in"},
+            PortSpec{1, SignalType::BipolarAudio, "delay_mod"},
+        };
+        spec.outputs = {
+            PortSpec{0, SignalType::BipolarAudio, "out"},
+        };
+        return spec;
+    }
     if (typeName == "Constant") {
         spec.inputs = {
             PortSpec{0, SignalType::BipolarAudio, "aux_a"},
@@ -782,7 +946,7 @@ neurons::engine::core::NodeSpec PatchCanvas::makeSpec(neurons::engine::core::Nod
     if (typeName == "SlopeDetect") {
         spec.inputs = {
             PortSpec{0, SignalType::BipolarAudio, "in"},
-            PortSpec{1, SignalType::BipolarAudio, "aux"},
+            PortSpec{1, SignalType::BipolarAudio, "threshold_mod"},
         };
         spec.outputs = {
             PortSpec{0, SignalType::BipolarAudio, "slope_state"},
@@ -812,7 +976,7 @@ neurons::engine::core::NodeSpec PatchCanvas::makeSpec(neurons::engine::core::Nod
     if (typeName == "RefractoryGate") {
         spec.inputs = {
             PortSpec{0, SignalType::TriggerAudio, "trig_in"},
-            PortSpec{1, SignalType::BipolarAudio, "aux"},
+            PortSpec{1, SignalType::BipolarAudio, "time_mod"},
         };
         spec.outputs = {
             PortSpec{0, SignalType::GateAudio, "gate"},
@@ -822,7 +986,7 @@ neurons::engine::core::NodeSpec PatchCanvas::makeSpec(neurons::engine::core::Nod
     if (typeName == "SpikeGenerator") {
         spec.inputs = {
             PortSpec{0, SignalType::BipolarAudio, "in"},
-            PortSpec{1, SignalType::BipolarAudio, "aux"},
+            PortSpec{1, SignalType::BipolarAudio, "threshold_mod"},
         };
         spec.outputs = {
             PortSpec{0, SignalType::GateAudio, "spike"},
@@ -862,7 +1026,7 @@ neurons::engine::core::NodeSpec PatchCanvas::makeSpec(neurons::engine::core::Nod
     if (typeName == "BurstNeuron") {
         spec.inputs = {
             PortSpec{0, SignalType::TriggerAudio, "trig"},
-            PortSpec{1, SignalType::BipolarAudio, "aux"},
+            PortSpec{1, SignalType::BipolarAudio, "burst_mod"},
         };
         spec.outputs = {
             PortSpec{0, SignalType::GateAudio, "burst"},
@@ -874,6 +1038,7 @@ neurons::engine::core::NodeSpec PatchCanvas::makeSpec(neurons::engine::core::Nod
         spec.inputs = {
             PortSpec{0, SignalType::HzAudio, "freq_hz"},
             PortSpec{1, SignalType::BipolarAudio, "phase_mod"},
+            PortSpec{2, SignalType::TriggerAudio, "wave_mod"},
         };
         spec.outputs = {
             PortSpec{0, SignalType::BipolarAudio, "out"},
@@ -892,17 +1057,17 @@ neurons::engine::core::NodeSpec PatchCanvas::makeSpec(neurons::engine::core::Nod
         return spec;
     }
     if (typeName == "Leak") {
-        spec.inputs = {{0, SignalType::BipolarAudio, "in"}, {1, SignalType::BipolarAudio, "aux"}};
+        spec.inputs = {{0, SignalType::BipolarAudio, "in"}, {1, SignalType::BipolarAudio, "leak_mod"}};
         spec.outputs = {{0, SignalType::BipolarAudio, "out"}};
         return spec;
     }
     if (typeName == "Threshold") {
-        spec.inputs = {{0, SignalType::BipolarAudio, "in"}, {1, SignalType::BipolarAudio, "aux"}};
+        spec.inputs = {{0, SignalType::BipolarAudio, "in"}, {1, SignalType::BipolarAudio, "threshold_mod"}};
         spec.outputs = {{0, SignalType::GateAudio, "gate"}};
         return spec;
     }
     if (typeName == "Pulse") {
-        spec.inputs = {{0, SignalType::TriggerAudio, "trig"}, {1, SignalType::BipolarAudio, "aux"}};
+        spec.inputs = {{0, SignalType::TriggerAudio, "trig"}, {1, SignalType::BipolarAudio, "pulse_mod"}};
         spec.outputs = {{0, SignalType::GateAudio, "pulse"}};
         return spec;
     }
@@ -912,12 +1077,12 @@ neurons::engine::core::NodeSpec PatchCanvas::makeSpec(neurons::engine::core::Nod
         return spec;
     }
     if (typeName == "Slew") {
-        spec.inputs = {{0, SignalType::BipolarAudio, "in"}, {1, SignalType::BipolarAudio, "aux"}};
+        spec.inputs = {{0, SignalType::BipolarAudio, "in"}, {1, SignalType::BipolarAudio, "slew_mod"}};
         spec.outputs = {{0, SignalType::BipolarAudio, "out"}};
         return spec;
     }
     if (typeName == "Waveshaper") {
-        spec.inputs = {{0, SignalType::BipolarAudio, "in"}, {1, SignalType::BipolarAudio, "aux"}};
+        spec.inputs = {{0, SignalType::BipolarAudio, "in"}, {1, SignalType::BipolarAudio, "shape_mod"}};
         spec.outputs = {{0, SignalType::BipolarAudio, "out"}};
         return spec;
     }
@@ -927,7 +1092,7 @@ neurons::engine::core::NodeSpec PatchCanvas::makeSpec(neurons::engine::core::Nod
         return spec;
     }
     if (typeName == "Drift") {
-        spec.inputs = {{0, SignalType::BipolarAudio, "in"}, {1, SignalType::BipolarAudio, "aux"}};
+        spec.inputs = {{0, SignalType::BipolarAudio, "in"}, {1, SignalType::BipolarAudio, "drift_mod"}};
         spec.outputs = {{0, SignalType::BipolarAudio, "out"}};
         return spec;
     }
@@ -952,7 +1117,7 @@ neurons::engine::core::NodeSpec PatchCanvas::makeSpec(neurons::engine::core::Nod
         return spec;
     }
     if (typeName == "PhaseOps") {
-        spec.inputs = {{0, SignalType::PhaseAudio, "phase"}, {1, SignalType::BipolarAudio, "aux"}};
+        spec.inputs = {{0, SignalType::PhaseAudio, "phase"}, {1, SignalType::BipolarAudio, "phase_mod"}};
         spec.outputs = {{0, SignalType::PhaseAudio, "phase_out"}};
         return spec;
     }
@@ -1017,7 +1182,7 @@ neurons::engine::core::NodeSpec PatchCanvas::makeSpec(neurons::engine::core::Nod
         return spec;
     }
     if (typeName == "Invert") {
-        spec.inputs = {{0, SignalType::BipolarAudio, "in"}, {1, SignalType::BipolarAudio, "aux"}};
+        spec.inputs = {{0, SignalType::BipolarAudio, "in"}, {1, SignalType::BipolarAudio, "gain_mod"}};
         spec.outputs = {{0, SignalType::BipolarAudio, "out"}};
         return spec;
     }
@@ -1040,7 +1205,7 @@ neurons::engine::core::NodeSpec PatchCanvas::makeSpec(neurons::engine::core::Nod
     if (typeName == "UnitConvert") {
         spec.inputs = {
             PortSpec{0, SignalType::BipolarAudio, "in"},
-            PortSpec{1, SignalType::BipolarAudio, "aux"},
+            PortSpec{1, SignalType::BipolarAudio, "scale_mod"},
         };
         spec.outputs = {
             PortSpec{0, SignalType::BipolarAudio, "out"},
@@ -1051,7 +1216,7 @@ neurons::engine::core::NodeSpec PatchCanvas::makeSpec(neurons::engine::core::Nod
     if (typeName == "ScopeProbe") {
         spec.inputs = {
             PortSpec{0, SignalType::BipolarAudio, "in"},
-            PortSpec{1, SignalType::BipolarAudio, "aux"},
+            PortSpec{1, SignalType::BipolarAudio, "monitor_mod"},
         };
         spec.outputs = {
             PortSpec{0, SignalType::BipolarAudio, "through"},
@@ -1069,10 +1234,26 @@ neurons::engine::core::NodeSpec PatchCanvas::makeSpec(neurons::engine::core::Nod
         };
         return spec;
     }
+    if (typeName == "OSCInput") {
+        spec.inputs = {};
+        spec.outputs = {
+            PortSpec{0, SignalType::BipolarAudio, "out"},
+        };
+        return spec;
+    }
+    if (typeName == "OSCOutput") {
+        spec.inputs = {
+            PortSpec{0, SignalType::BipolarAudio, "in"},
+        };
+        spec.outputs = {
+            PortSpec{0, SignalType::BipolarAudio, "through"},
+        };
+        return spec;
+    }
 
     spec.inputs = {
         PortSpec{0, SignalType::BipolarAudio, "in"},
-        PortSpec{1, SignalType::BipolarAudio, "aux"},
+        PortSpec{1, SignalType::BipolarAudio, "mod"},
     };
     spec.outputs = {
         PortSpec{0, SignalType::BipolarAudio, "out"},

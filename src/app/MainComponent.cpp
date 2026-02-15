@@ -22,6 +22,21 @@ std::optional<neurons::engine::core::SignalType> parseSignalType(const juce::Str
     if (text == "TimeAudio") return SignalType::TimeAudio;
     return std::nullopt;
 }
+
+std::optional<neurons::engine::core::NodeId> parseOscNodeId(const juce::String& address, const juce::String& prefix) {
+    if (!address.startsWith(prefix)) {
+        return std::nullopt;
+    }
+    const auto suffix = address.fromFirstOccurrenceOf(prefix, false, false).trim();
+    if (suffix.isEmpty()) {
+        return std::nullopt;
+    }
+    const auto parsed = suffix.getLargeIntValue();
+    if (parsed <= 0) {
+        return std::nullopt;
+    }
+    return static_cast<neurons::engine::core::NodeId>(parsed);
+}
 }
 
 void ScopeStrip::setTrace(std::vector<float> trace, bool active) {
@@ -191,8 +206,9 @@ void PhaseStrip::paint(juce::Graphics& g) {
 MainComponent::MainComponent()
     : canvas_(audioEngine_) {
     addAndMakeVisible(canvas_);
+    setWantsKeyboardFocus(true);
 
-    for (auto* button : {&nodePalette_, &load_, &save_, &connect_, &clear_, &autoConvert_}) {
+    for (auto* button : {&nodePalette_, &load_, &save_, &connect_, &clear_, &audioPower_}) {
         addAndMakeVisible(*button);
         button->addListener(this);
         button->setColour(juce::TextButton::buttonColourId, juce::Colour::fromRGB(134, 139, 147));
@@ -289,15 +305,12 @@ MainComponent::MainComponent()
     outputRecordFolder_.createDirectory();
     recordThread_.startThread();
     setAudioChannels(2, 2);
-    {
-        juce::AudioDeviceManager::AudioDeviceSetup setup;
-        deviceManager.getAudioDeviceSetup(setup);
-        setup.bufferSize = std::max(setup.bufferSize, 2048);
-        if (setup.sampleRate <= 0.0) {
-            setup.sampleRate = 48000.0;
-        }
-        deviceManager.setAudioDeviceSetup(setup, true);
+    applyPreferredAudioSetup();
+    oscReceiverConnected_ = oscReceiver_.connect(9000);
+    if (oscReceiverConnected_) {
+        oscReceiver_.addListener(this);
     }
+    oscSenderConnected_ = oscSender_.connect("127.0.0.1", 9001);
 
     refreshInspector();
     startTimerHz(5);
@@ -307,8 +320,13 @@ MainComponent::~MainComponent() {
     stopOutputRecording();
     recordThread_.stopThread(1500);
     shutdownAudio();
+    if (oscReceiverConnected_) {
+        oscReceiver_.removeListener(this);
+        oscReceiver_.disconnect();
+    }
+    oscSender_.disconnect();
 
-    for (auto* button : {&nodePalette_, &load_, &save_, &connect_, &clear_, &autoConvert_, &recordFolderButton_, &sampleLoadButton_, &bytebeatEditButton_}) {
+    for (auto* button : {&nodePalette_, &load_, &save_, &connect_, &clear_, &audioPower_, &recordFolderButton_, &sampleLoadButton_, &bytebeatEditButton_}) {
         button->removeListener(this);
     }
     modeToggle_.removeListener(this);
@@ -339,7 +357,7 @@ void MainComponent::resized() {
 
     const int buttonW = 110;
     const int buttonGap = 6;
-    for (auto* button : {&nodePalette_, &load_, &save_, &connect_, &clear_, &autoConvert_}) {
+    for (auto* button : {&nodePalette_, &load_, &save_, &connect_, &clear_, &audioPower_}) {
         button->setBounds(top.removeFromLeft(buttonW));
         top.removeFromLeft(buttonGap);
     }
@@ -406,10 +424,8 @@ void MainComponent::buttonClicked(juce::Button* button) {
                     safeThis->canvas_.clearGraph();
                 }
             }));
-    } else if (button == &autoConvert_) {
-        const bool enabled = !canvas_.autoInsertConvertersEnabled();
-        canvas_.setAutoInsertConvertersEnabled(enabled);
-        autoConvert_.setButtonText(enabled ? "AutoConv: On" : "AutoConv: Off");
+    } else if (button == &audioPower_) {
+        setAudioEnabled(!audioEnabled_);
     } else if (button == &recordFolderButton_) {
         chooseRecordFolder();
     } else if (button == &sampleLoadButton_) {
@@ -421,6 +437,18 @@ void MainComponent::buttonClicked(juce::Button* button) {
             applyInspectorValues();
         }
     }
+}
+
+bool MainComponent::keyPressed(const juce::KeyPress& key) {
+    if (key.getModifiers().isCommandDown()) {
+        const auto ch = key.getTextCharacter();
+        if (ch == 'a' || ch == 'A') {
+            const bool enabled = !canvas_.autoInsertConvertersEnabled();
+            canvas_.setAutoInsertConvertersEnabled(enabled);
+            return true;
+        }
+    }
+    return false;
 }
 
 void MainComponent::sliderValueChanged(juce::Slider* slider) {
@@ -469,84 +497,130 @@ void MainComponent::timerCallback() {
          << "  selected: " << canvas_.selectedCount()
          << "  auto-conv: " << (canvas_.autoInsertConvertersEnabled() ? "on" : "off")
          << "  cycle cap: " << audioEngine_.cycleConfig().activeCap()
+         << "  osc in: " << (oscReceiverConnected_ ? "9000" : "off")
+         << "  osc out: " << (oscSenderConnected_ ? "9001" : "off")
          << "  cpu: " << juce::String(audioEngine_.lastCpuLoadPercent(), 1) << "%";
 
     status_.setText(text, juce::dontSendNotification);
+
+    if (oscSenderConnected_) {
+        for (const auto& [nodeId, value] : audioEngine_.latestOscOutputs()) {
+            oscSender_.send("/neural/out/" + juce::String(static_cast<juce::int64>(nodeId)), value);
+        }
+    }
 }
 
 void MainComponent::showNodePaletteMenu() {
-    juce::PopupMenu utility;
-    utility.addItem(1, "OutputStereo");
-    utility.addItem(2, "Mix");
-    utility.addItem(3, "UnitConvert");
-    utility.addItem(4, "ScopeProbe");
-    utility.addItem(5, "Constant");
-    utility.addItem(6, "FeedbackTap");
-
-    juce::PopupMenu core;
-    core.addItem(10, "NeuronCore");
-    core.addItem(11, "Synapse");
-    core.addItem(12, "Integrator");
-    core.addItem(13, "Leak");
-    core.addItem(14, "Threshold");
-    core.addItem(15, "Pulse");
-    core.addItem(16, "Gate");
-    core.addItem(17, "Slew");
-    core.addItem(18, "Saturator");
-    core.addItem(19, "Waveshaper");
-    core.addItem(20, "AdaptiveThreshold");
-    core.addItem(21, "RefractoryGate");
-    core.addItem(22, "SpikeGenerator");
-    core.addItem(23, "MembraneLeakCap");
-    core.addItem(24, "DendriteSum");
-    core.addItem(25, "DendriteNonlinearity");
-    core.addItem(26, "BurstNeuron");
+    juce::PopupMenu io;
+    io.addItem(1, "OutputStereo");
+    io.addItem(96, "OSCInput");
+    io.addItem(97, "OSCOutput");
+    io.addItem(35, "BytebeatJs");
+    io.addItem(34, "SamplePlayerWav");
 
     juce::PopupMenu sources;
     sources.addItem(30, "Oscillator");
-    sources.addItem(31, "OscillatorPhase");
     sources.addItem(32, "Noise");
     sources.addItem(33, "Drift");
-    sources.addItem(34, "SamplePlayerWav");
-    sources.addItem(35, "BytebeatJs");
+    sources.addItem(31, "OscillatorPhase");
+    sources.addItem(5, "Constant");
 
-    juce::PopupMenu dsp;
-    dsp.addItem(40, "PhaseOps");
-    dsp.addItem(41, "DelayShort");
-    dsp.addItem(42, "BiquadCore");
-    dsp.addItem(43, "SampleHold");
-    dsp.addItem(56, "SampleHoldGated");
-    dsp.addItem(57, "SampleHoldClocked");
-    dsp.addItem(58, "SampleHoldSlew");
-    dsp.addItem(59, "SampleHoldQuantized");
-    dsp.addItem(44, "CrossfadeVCA");
-    dsp.addItem(45, "Allpass");
-    dsp.addItem(60, "AllpassBank");
-    dsp.addItem(61, "CombFilter");
-    dsp.addItem(62, "DiffusionBlock");
-    dsp.addItem(46, "Invert");
-    dsp.addItem(47, "Modulo");
-    dsp.addItem(48, "Counter");
-    dsp.addItem(49, "Add");
-    dsp.addItem(50, "Multiply");
-    dsp.addItem(63, "AnalogAnd");
-    dsp.addItem(64, "AnalogOr");
-    dsp.addItem(65, "AnalogXor");
-    dsp.addItem(66, "AnalogNand");
-    dsp.addItem(67, "AnalogNor");
-    dsp.addItem(51, "Compare");
-    dsp.addItem(52, "RandomGate");
-    dsp.addItem(53, "Switch");
-    dsp.addItem(54, "SlopeDetect");
-    dsp.addItem(55, "MatrixMixer");
-    dsp.addItem(68, "SchmittTrigger");
-    dsp.addItem(69, "WindowComparator");
+    juce::PopupMenu neurons;
+    neurons.addItem(10, "NeuronCore");
+    neurons.addItem(11, "Synapse");
+    neurons.addItem(12, "Integrator");
+    neurons.addItem(13, "Leak");
+    neurons.addItem(14, "Threshold");
+    neurons.addItem(20, "AdaptiveThreshold");
+    neurons.addItem(21, "RefractoryGate");
+    neurons.addItem(22, "SpikeGenerator");
+    neurons.addItem(23, "MembraneLeakCap");
+    neurons.addItem(24, "DendriteSum");
+    neurons.addItem(25, "DendriteNonlinearity");
+    neurons.addItem(26, "BurstNeuron");
+
+    juce::PopupMenu mathLogic;
+    mathLogic.addItem(49, "Add");
+    mathLogic.addItem(50, "Multiply");
+    mathLogic.addItem(70, "Divide");
+    mathLogic.addItem(51, "Compare");
+    mathLogic.addItem(53, "Switch");
+    mathLogic.addItem(47, "Modulo");
+    mathLogic.addItem(46, "Invert");
+    mathLogic.addItem(63, "AnalogAnd");
+    mathLogic.addItem(64, "AnalogOr");
+    mathLogic.addItem(65, "AnalogXor");
+    mathLogic.addItem(66, "AnalogNand");
+    mathLogic.addItem(67, "AnalogNor");
+    mathLogic.addItem(69, "WindowComparator");
+
+    juce::PopupMenu bitOps;
+    bitOps.addItem(71, "BitAnd");
+    bitOps.addItem(72, "BitOr");
+    bitOps.addItem(73, "BitXor");
+    bitOps.addItem(74, "BitNot");
+    bitOps.addItem(75, "ShiftLeft");
+    bitOps.addItem(76, "ShiftRight");
+    bitOps.addItem(77, "RotateLeft");
+    bitOps.addItem(78, "RotateRight");
+    bitOps.addItem(79, "BitMask");
+    bitOps.addItem(80, "BitSet");
+    bitOps.addItem(81, "BitClear");
+    bitOps.addItem(82, "BitToggle");
+    bitOps.addItem(83, "BitExtract");
+    bitOps.addItem(84, "BitPack");
+    bitOps.addItem(85, "BitUnpack");
+    bitOps.addItem(86, "Popcount");
+    bitOps.addItem(87, "Parity");
+    bitOps.addItem(88, "LeadingZeros");
+    bitOps.addItem(89, "TrailingZeros");
+    bitOps.addItem(90, "ByteSwap");
+    bitOps.addItem(91, "BitCrush");
+    bitOps.addItem(92, "BitQuantize");
+    bitOps.addItem(93, "BitDelayPerBit");
+
+    juce::PopupMenu timingControl;
+    timingControl.addItem(43, "SampleHold");
+    timingControl.addItem(16, "Gate");
+    timingControl.addItem(15, "Pulse");
+    timingControl.addItem(17, "Slew");
+    timingControl.addItem(52, "RandomGate");
+    timingControl.addItem(68, "SchmittTrigger");
+    timingControl.addItem(48, "Counter");
+    timingControl.addItem(56, "SampleHoldGated");
+    timingControl.addItem(57, "SampleHoldClocked");
+    timingControl.addItem(58, "SampleHoldSlew");
+    timingControl.addItem(59, "SampleHoldQuantized");
+    timingControl.addItem(54, "SlopeDetect");
+
+    juce::PopupMenu filtersSpatial;
+    filtersSpatial.addItem(42, "BiquadCore");
+    filtersSpatial.addItem(41, "DelayShort");
+    filtersSpatial.addItem(18, "Saturator");
+    filtersSpatial.addItem(19, "Waveshaper");
+    filtersSpatial.addItem(44, "CrossfadeVCA");
+    filtersSpatial.addItem(40, "PhaseOps");
+    filtersSpatial.addItem(45, "Allpass");
+    filtersSpatial.addItem(60, "AllpassBank");
+    filtersSpatial.addItem(61, "CombFilter");
+    filtersSpatial.addItem(62, "DiffusionBlock");
+
+    juce::PopupMenu routingUtility;
+    routingUtility.addItem(2, "Mix");
+    routingUtility.addItem(55, "MatrixMixer");
+    routingUtility.addItem(4, "ScopeProbe");
+    routingUtility.addItem(3, "UnitConvert");
+    routingUtility.addItem(6, "FeedbackTap");
 
     juce::PopupMenu menu;
-    menu.addSubMenu("Utility", utility);
-    menu.addSubMenu("Neuron Core", core);
+    menu.addSubMenu("I/O & Files", io);
     menu.addSubMenu("Sources", sources);
-    menu.addSubMenu("DSP Ops", dsp);
+    menu.addSubMenu("Neuron Models", neurons);
+    menu.addSubMenu("Math & Logic", mathLogic);
+    menu.addSubMenu("Bit Ops", bitOps);
+    menu.addSubMenu("Timing & Control", timingControl);
+    menu.addSubMenu("Filters & Space", filtersSpatial);
+    menu.addSubMenu("Routing & Utility", routingUtility);
 
     juce::Component::SafePointer<MainComponent> safeThis(this);
     menu.showMenuAsync(juce::PopupMenu::Options{}.withTargetComponent(&nodePalette_),
@@ -557,6 +631,8 @@ void MainComponent::showNodePaletteMenu() {
 
                            switch (choice) {
                            case 1: safeThis->addNodeType("OutputStereo"); break;
+                           case 96: safeThis->addNodeType("OSCInput"); break;
+                           case 97: safeThis->addNodeType("OSCOutput"); break;
                            case 2: safeThis->addNodeType("Mix"); break;
                            case 3: safeThis->addNodeType("UnitConvert"); break;
                            case 4: safeThis->addNodeType("ScopeProbe"); break;
@@ -603,6 +679,7 @@ void MainComponent::showNodePaletteMenu() {
                            case 48: safeThis->addNodeType("Counter"); break;
                            case 49: safeThis->addNodeType("Add"); break;
                            case 50: safeThis->addNodeType("Multiply"); break;
+                           case 70: safeThis->addNodeType("Divide"); break;
                            case 63: safeThis->addNodeType("AnalogAnd"); break;
                            case 64: safeThis->addNodeType("AnalogOr"); break;
                            case 65: safeThis->addNodeType("AnalogXor"); break;
@@ -615,6 +692,29 @@ void MainComponent::showNodePaletteMenu() {
                            case 55: safeThis->addNodeType("MatrixMixer"); break;
                            case 68: safeThis->addNodeType("SchmittTrigger"); break;
                            case 69: safeThis->addNodeType("WindowComparator"); break;
+                           case 71: safeThis->addNodeType("BitAnd"); break;
+                           case 72: safeThis->addNodeType("BitOr"); break;
+                           case 73: safeThis->addNodeType("BitXor"); break;
+                           case 74: safeThis->addNodeType("BitNot"); break;
+                           case 75: safeThis->addNodeType("ShiftLeft"); break;
+                           case 76: safeThis->addNodeType("ShiftRight"); break;
+                           case 77: safeThis->addNodeType("RotateLeft"); break;
+                           case 78: safeThis->addNodeType("RotateRight"); break;
+                           case 79: safeThis->addNodeType("BitMask"); break;
+                           case 80: safeThis->addNodeType("BitSet"); break;
+                           case 81: safeThis->addNodeType("BitClear"); break;
+                           case 82: safeThis->addNodeType("BitToggle"); break;
+                           case 83: safeThis->addNodeType("BitExtract"); break;
+                           case 84: safeThis->addNodeType("BitPack"); break;
+                           case 85: safeThis->addNodeType("BitUnpack"); break;
+                           case 86: safeThis->addNodeType("Popcount"); break;
+                           case 87: safeThis->addNodeType("Parity"); break;
+                           case 88: safeThis->addNodeType("LeadingZeros"); break;
+                           case 89: safeThis->addNodeType("TrailingZeros"); break;
+                           case 90: safeThis->addNodeType("ByteSwap"); break;
+                           case 91: safeThis->addNodeType("BitCrush"); break;
+                           case 92: safeThis->addNodeType("BitQuantize"); break;
+                           case 93: safeThis->addNodeType("BitDelayPerBit"); break;
                            default: break;
                            }
                        });
@@ -1039,6 +1139,33 @@ void MainComponent::stopOutputRecording() {
     threadedWriter_.reset();
 }
 
+void MainComponent::applyPreferredAudioSetup() {
+    juce::AudioDeviceManager::AudioDeviceSetup setup;
+    deviceManager.getAudioDeviceSetup(setup);
+    setup.bufferSize = std::max(setup.bufferSize, 2048);
+    if (setup.sampleRate <= 0.0) {
+        setup.sampleRate = 48000.0;
+    }
+    deviceManager.setAudioDeviceSetup(setup, true);
+}
+
+void MainComponent::setAudioEnabled(bool enabled) {
+    if (enabled == audioEnabled_) {
+        return;
+    }
+
+    if (enabled) {
+        setAudioChannels(2, 2);
+        applyPreferredAudioSetup();
+    } else {
+        stopOutputRecording();
+        shutdownAudio();
+    }
+
+    audioEnabled_ = enabled;
+    audioPower_.setButtonText(audioEnabled_ ? "Audio: On" : "Audio: Off");
+}
+
 void MainComponent::refreshInspector() {
     const auto selectedId = canvas_.singleSelectedNodeId();
     const auto selectedType = canvas_.singleSelectedNodeType();
@@ -1105,10 +1232,17 @@ void MainComponent::refreshInspector() {
     if (inspectedNodeType_ == "Oscillator") {
         inspectorTitle_.setText("Inspector: Oscillator", juce::dontSendNotification);
         paramAKey_ = "freq_hz";
+        paramBKey_ = "waveform";
         paramALabel_.setText("Frequency (Hz)", juce::dontSendNotification);
-        paramA_.setRange(20.0, 2000.0, 0.01);
+        paramBLabel_.setText("Waveform (0=sine 1=tri 2=saw 3=square)", juce::dontSendNotification);
+        paramA_.setRange(0.0, 20000.0, 0.01);
+        paramB_.setRange(0.0, 3.0, 1.0);
         paramA_.setSkewFactorFromMidPoint(220.0);
+        paramB_.setSkewFactor(1.0);
         paramA_.setValue(audioEngine_.getNodeParam(*inspectedNodeId_, paramAKey_).value_or(220.0f), juce::dontSendNotification);
+        paramB_.setValue(audioEngine_.getNodeParam(*inspectedNodeId_, paramBKey_).value_or(0.0f), juce::dontSendNotification);
+        paramB_.setVisible(true);
+        paramBLabel_.setVisible(true);
     } else if (inspectedNodeType_ == "SamplePlayerWav") {
         inspectorTitle_.setText("Inspector: SamplePlayerWav", juce::dontSendNotification);
         paramAKey_ = "rate";
@@ -1365,7 +1499,58 @@ void MainComponent::refreshInspector() {
         inspectorTitle_.setText("Inspector: Constant", juce::dontSendNotification);
         paramAKey_ = "value";
         paramALabel_.setText("Value", juce::dontSendNotification);
-        paramA_.setRange(-128.0, 127.0, 0.001);
+        paramA_.setRange(-1000000.0, 1000000.0, 0.001);
+        paramA_.setSkewFactor(1.0);
+        paramA_.setValue(audioEngine_.getNodeParam(*inspectedNodeId_, paramAKey_).value_or(0.0f), juce::dontSendNotification);
+    } else if (inspectedNodeType_ == "Add") {
+        inspectorTitle_.setText("Inspector: Add", juce::dontSendNotification);
+        paramAKey_ = "b_value";
+        paramALabel_.setText("B Value (B unpatched)", juce::dontSendNotification);
+        paramA_.setRange(-1000000.0, 1000000.0, 0.001);
+        paramA_.setSkewFactor(1.0);
+        paramA_.setValue(audioEngine_.getNodeParam(*inspectedNodeId_, paramAKey_).value_or(0.0f), juce::dontSendNotification);
+    } else if (inspectedNodeType_ == "Multiply") {
+        inspectorTitle_.setText("Inspector: Multiply", juce::dontSendNotification);
+        paramAKey_ = "multiplicand";
+        paramALabel_.setText("Multiplicand (B unpatched)", juce::dontSendNotification);
+        paramA_.setRange(-1000000.0, 1000000.0, 0.001);
+        paramA_.setSkewFactorFromMidPoint(1.0);
+        paramA_.setValue(audioEngine_.getNodeParam(*inspectedNodeId_, paramAKey_).value_or(1.0f), juce::dontSendNotification);
+    } else if (inspectedNodeType_ == "Divide") {
+        inspectorTitle_.setText("Inspector: Divide", juce::dontSendNotification);
+        paramAKey_ = "b_value";
+        paramALabel_.setText("Divisor (B unpatched)", juce::dontSendNotification);
+        paramA_.setRange(-1000000.0, 1000000.0, 0.001);
+        paramA_.setSkewFactor(1.0);
+        paramA_.setValue(audioEngine_.getNodeParam(*inspectedNodeId_, paramAKey_).value_or(1.0f), juce::dontSendNotification);
+    } else if (inspectedNodeType_ == "BitCrush" || inspectedNodeType_ == "BitQuantize") {
+        inspectorTitle_.setText("Inspector: " + juce::String(inspectedNodeType_), juce::dontSendNotification);
+        paramAKey_ = "b_value";
+        paramALabel_.setText("Bit Depth (B unpatched)", juce::dontSendNotification);
+        paramA_.setRange(1.0, 16.0, 1.0);
+        paramA_.setSkewFactor(1.0);
+        paramA_.setValue(audioEngine_.getNodeParam(*inspectedNodeId_, paramAKey_).value_or(8.0f), juce::dontSendNotification);
+    } else if (inspectedNodeType_ == "BitDelayPerBit") {
+        inspectorTitle_.setText("Inspector: BitDelayPerBit", juce::dontSendNotification);
+        paramAKey_ = "b_value";
+        paramALabel_.setText("Base Delay (samples)", juce::dontSendNotification);
+        paramA_.setRange(0.0, 64.0, 1.0);
+        paramA_.setSkewFactor(1.0);
+        paramA_.setValue(audioEngine_.getNodeParam(*inspectedNodeId_, paramAKey_).value_or(2.0f), juce::dontSendNotification);
+    } else if (inspectedNodeType_ == "BitAnd" || inspectedNodeType_ == "BitOr" ||
+               inspectedNodeType_ == "BitXor" || inspectedNodeType_ == "BitNot" ||
+               inspectedNodeType_ == "ShiftLeft" || inspectedNodeType_ == "ShiftRight" ||
+               inspectedNodeType_ == "RotateLeft" || inspectedNodeType_ == "RotateRight" ||
+               inspectedNodeType_ == "BitMask" || inspectedNodeType_ == "BitSet" ||
+               inspectedNodeType_ == "BitClear" || inspectedNodeType_ == "BitToggle" ||
+               inspectedNodeType_ == "BitExtract" || inspectedNodeType_ == "BitPack" ||
+               inspectedNodeType_ == "BitUnpack" || inspectedNodeType_ == "Popcount" ||
+               inspectedNodeType_ == "Parity" || inspectedNodeType_ == "LeadingZeros" ||
+               inspectedNodeType_ == "TrailingZeros" || inspectedNodeType_ == "ByteSwap") {
+        inspectorTitle_.setText("Inspector: " + juce::String(inspectedNodeType_), juce::dontSendNotification);
+        paramAKey_ = "b_value";
+        paramALabel_.setText("B Value (B unpatched)", juce::dontSendNotification);
+        paramA_.setRange(0.0, 65535.0, 1.0);
         paramA_.setSkewFactor(1.0);
         paramA_.setValue(audioEngine_.getNodeParam(*inspectedNodeId_, paramAKey_).value_or(0.0f), juce::dontSendNotification);
     } else if (inspectedNodeType_ == "RandomGate") {
@@ -1384,9 +1569,14 @@ void MainComponent::refreshInspector() {
         paramBLabel_.setVisible(true);
     } else if (inspectedNodeType_ == "Compare") {
         inspectorTitle_.setText("Inspector: Compare", juce::dontSendNotification);
-        paramA_.setVisible(false);
+        paramAKey_ = "b_value";
+        paramALabel_.setText("B Value (B unpatched)", juce::dontSendNotification);
+        paramA_.setRange(-128.0, 127.0, 0.001);
+        paramA_.setSkewFactor(1.0);
+        paramA_.setValue(audioEngine_.getNodeParam(*inspectedNodeId_, paramAKey_).value_or(0.0f), juce::dontSendNotification);
+        paramA_.setVisible(true);
+        paramALabel_.setVisible(true);
         paramB_.setVisible(false);
-        paramALabel_.setVisible(false);
         paramBLabel_.setVisible(false);
         modeLabel_.setText("Mode", juce::dontSendNotification);
         modeLabel_.setVisible(true);
@@ -1649,6 +1839,28 @@ void MainComponent::applyInspectorValues() {
         }
     }
     audioEngine_.publishGraphSnapshot();
+}
+
+void MainComponent::oscMessageReceived(const juce::OSCMessage& message) {
+    const auto address = message.getAddressPattern().toString();
+    auto nodeId = parseOscNodeId(address, "/neural/in/");
+    if (!nodeId.has_value()) {
+        return;
+    }
+    if (message.size() <= 0) {
+        return;
+    }
+
+    float value = 0.0f;
+    const auto& arg = message[0];
+    if (arg.isFloat32()) {
+        value = arg.getFloat32();
+    } else if (arg.isInt32()) {
+        value = static_cast<float>(arg.getInt32());
+    } else {
+        return;
+    }
+    audioEngine_.setOscInputValue(*nodeId, value);
 }
 
 void MainComponent::prepareToPlay(int samplesPerBlockExpected, double sampleRate) {

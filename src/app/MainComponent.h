@@ -2,6 +2,7 @@
 
 #include <juce_audio_utils/juce_audio_utils.h>
 #include <juce_gui_extra/juce_gui_extra.h>
+#include <juce_osc/juce_osc.h>
 
 #include <memory>
 #include <atomic>
@@ -44,13 +45,15 @@ private:
 class MainComponent final : public juce::AudioAppComponent,
                             private juce::Button::Listener,
                             private juce::Slider::Listener,
-                            private juce::Timer {
+                            private juce::Timer,
+                            private juce::OSCReceiver::Listener<juce::OSCReceiver::MessageLoopCallback> {
 public:
     MainComponent();
     ~MainComponent() override;
 
     void paint(juce::Graphics& g) override;
     void resized() override;
+    bool keyPressed(const juce::KeyPress& key) override;
 
 private:
     void buttonClicked(juce::Button* button) override;
@@ -67,8 +70,11 @@ private:
     void editBytebeatScript();
     void startOutputRecording();
     void stopOutputRecording();
+    void applyPreferredAudioSetup();
+    void setAudioEnabled(bool enabled);
     void refreshInspector();
     void applyInspectorValues();
+    void oscMessageReceived(const juce::OSCMessage& message) override;
 
     void prepareToPlay(int samplesPerBlockExpected, double sampleRate) override;
     void getNextAudioBlock(const juce::AudioSourceChannelInfo& bufferToFill) override;
@@ -82,7 +88,7 @@ private:
     juce::TextButton save_{"Save"};
     juce::TextButton connect_{"Connect Sel"};
     juce::TextButton clear_{"Clear"};
-    juce::TextButton autoConvert_{"AutoConv: On"};
+    juce::TextButton audioPower_{"Audio: On"};
 
     juce::Label status_;
     juce::Label inspectorTitle_{"inspector", "Inspector"};
@@ -116,6 +122,11 @@ private:
     juce::TimeSliceThread recordThread_{"Output Recorder"};
     std::unique_ptr<juce::AudioFormatWriter::ThreadedWriter> threadedWriter_;
     std::atomic<juce::AudioFormatWriter::ThreadedWriter*> activeWriter_{nullptr};
+    bool audioEnabled_{true};
+    juce::OSCReceiver oscReceiver_;
+    juce::OSCSender oscSender_;
+    bool oscReceiverConnected_{false};
+    bool oscSenderConnected_{false};
 
     std::vector<float> monoScratch_;
 };

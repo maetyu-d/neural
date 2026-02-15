@@ -6,12 +6,15 @@
 #include "../nodes/NodeProcessor.h"
 
 #include <cstdint>
+#include <cstddef>
 #include <atomic>
 #include <memory>
 #include <mutex>
+#include <limits>
 #include <optional>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace neurons::engine::rt {
@@ -48,6 +51,44 @@ public:
     std::optional<neurons::engine::core::NodeId> observedNodeId() const;
     std::vector<float> observedNodeTrace() const;
     float observedNodePeak() const;
+    std::optional<std::uint16_t> latestBitWord(neurons::engine::core::NodeId nodeId) const;
+    void setOscInputValue(neurons::engine::core::NodeId nodeId, float value);
+    std::vector<std::pair<neurons::engine::core::NodeId, float>> latestOscOutputs() const;
+    enum class ProcessorKind : std::uint8_t {
+        Unknown = 0,
+        Oscillator,
+        BiquadCore,
+        DelayShort,
+        Saturator,
+        Waveshaper,
+        Allpass,
+        AllpassBank,
+        CombFilter,
+        DiffusionBlock,
+        FeedbackTap,
+        SampleHoldGated,
+        SampleHoldClocked,
+        SampleHoldSlew,
+        SampleHoldQuantized,
+        SamplePlayerWav,
+        SchmittTrigger,
+        WindowComparator,
+        Modulo,
+        Counter,
+        Constant,
+        Compare,
+        RandomGate,
+        SlopeDetect,
+        AdaptiveThreshold,
+        RefractoryGate,
+        SpikeGenerator,
+        MembraneLeakCap,
+        DendriteSum,
+        DendriteNonlinearity,
+        BurstNeuron,
+        NeuronCore,
+        ScopeProbe,
+    };
 
 private:
     struct RuntimeSnapshot {
@@ -62,6 +103,14 @@ private:
         double sourceRate{48000.0};
         std::string name;
     };
+    struct BitDelayLine {
+        std::vector<std::uint16_t> words;
+        std::size_t write{0};
+    };
+    struct InputRef {
+        neurons::engine::core::NodeId fromNode{0};
+        neurons::engine::core::PortIndex fromPort{0};
+    };
 
     void createDefaultGraphIfEmpty();
     void rebuildRuntimeGraph(const neurons::engine::core::GraphModel& graph, int numSamples);
@@ -75,6 +124,8 @@ private:
                             neurons::engine::core::PortIndex port,
                             float* out,
                             int numSamples) const;
+    bool hasIncomingConnection(neurons::engine::core::NodeId nodeId,
+                               neurons::engine::core::PortIndex port) const;
     std::optional<neurons::engine::core::NodeId> chooseOutputNode(const neurons::engine::core::GraphModel& graph) const;
 
     neurons::engine::core::GraphModel graph_;
@@ -97,6 +148,12 @@ private:
     RuntimeSnapshot::ParamMap nodeParams_;
     std::unordered_map<neurons::engine::core::NodeId, std::unordered_map<std::string, std::string>> nodeScripts_;
     std::unordered_map<neurons::engine::core::NodeId, SampleClip> sampleClips_;
+    std::unordered_map<neurons::engine::core::NodeId, BitDelayLine> bitDelayLines_;
+    std::unordered_map<neurons::engine::core::NodeId, std::uint16_t> bitWordsScratch_;
+    std::unordered_map<neurons::engine::core::NodeId, ProcessorKind> processorKinds_;
+    std::unordered_map<neurons::engine::core::NodeId, float> oscOutputScratch_;
+    std::unordered_map<std::uint64_t, std::vector<InputRef>> incomingCache_;
+    std::uint64_t incomingCacheRevision_{std::numeric_limits<std::uint64_t>::max()};
 
     int maxBlockSize_{};
     double sampleRate_{};
@@ -107,6 +164,9 @@ private:
     std::atomic<neurons::engine::core::NodeId> observedNodeId_{0};
     std::atomic<float> observedNodePeak_{0.0f};
     std::shared_ptr<const std::vector<float>> observedNodeTrace_;
+    std::shared_ptr<const std::unordered_map<neurons::engine::core::NodeId, std::uint16_t>> latestBitWords_;
+    std::shared_ptr<const std::unordered_map<neurons::engine::core::NodeId, float>> latestOscOutputValues_;
+    std::shared_ptr<const std::unordered_map<neurons::engine::core::NodeId, float>> latestOscInputValues_;
     mutable std::mutex graphMutex_;
 };
 

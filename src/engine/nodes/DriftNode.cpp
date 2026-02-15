@@ -10,13 +10,14 @@ void DriftNode::reset(double) {
 }
 
 void DriftNode::process(std::span<const float> inA,
-                        std::span<const float>,
+                        std::span<const float> inB,
                         std::span<float> out) {
-    const auto n = std::min(inA.size(), out.size());
+    const auto n = std::min({inA.size(), inB.size(), out.size()});
     for (std::size_t i = 0; i < n; ++i) {
         state_ = state_ * 1103515245u + 12345u;
         const float rnd = static_cast<float>((state_ >> 16) & 0x7FFFu) / 16384.0f - 1.0f;
-        drift_ = std::clamp(drift_ + rnd * 0.00005f, -0.2f, 0.2f);
+        const float amt = std::clamp(1.0f + inB[i], 0.05f, 3.0f);
+        drift_ = std::clamp(drift_ + rnd * (0.00005f * amt), -0.2f, 0.2f);
         out[i] = inA[i] + drift_;
     }
 }

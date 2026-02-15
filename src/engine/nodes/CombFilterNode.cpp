@@ -26,19 +26,25 @@ void CombFilterNode::reset(double sampleRate) {
 }
 
 void CombFilterNode::process(std::span<const float> inA,
-                             std::span<const float>,
+                             std::span<const float> inB,
                              std::span<float> out) {
-    const auto n = std::min(inA.size(), out.size());
+    const auto n = std::min({inA.size(), inB.size(), out.size()});
     if (buffer_.empty()) {
         buffer_.assign(8192, 0.0f);
     }
 
     for (std::size_t i = 0; i < n; ++i) {
-        const auto read = (write_ + buffer_.size() - delaySamples_) % buffer_.size();
+        const float mod = std::clamp(inB[i], -1.0f, 1.0f);
+        const float dynDelayMs = std::clamp(delayMs_ * (1.0f + 0.6f * mod), 0.2f, 80.0f);
+        const auto dynSamples = static_cast<std::size_t>((dynDelayMs * 0.001f) * static_cast<float>(sampleRate_));
+        const auto tap = std::clamp<std::size_t>(dynSamples, 1, 8191);
+        const float dynFeedback = std::clamp(feedback_ + (0.2f * mod), -0.99f, 0.99f);
+        const float dynDamping = std::clamp(damping_ + (0.2f * mod), 0.0f, 0.99f);
+        const auto read = (write_ + buffer_.size() - tap) % buffer_.size();
         const float delayed = buffer_[read];
-        lpState_ += damping_ * (delayed - lpState_);
+        lpState_ += dynDamping * (delayed - lpState_);
         const float y = delayed;
-        const float fb = lpState_ * feedback_;
+        const float fb = lpState_ * dynFeedback;
         buffer_[write_] = inA[i] + fb;
         out[i] = y;
         write_ = (write_ + 1) % buffer_.size();

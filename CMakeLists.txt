@@ -150,6 +150,8 @@ target_sources(neuralApp PRIVATE
     src/engine/nodes/UnitConvertNode.h
     src/engine/nodes/MultiplyNode.cpp
     src/engine/nodes/MultiplyNode.h
+    src/engine/nodes/DivideNode.cpp
+    src/engine/nodes/DivideNode.h
     src/engine/nodes/WindowComparatorNode.cpp
     src/engine/nodes/WindowComparatorNode.h
     src/engine/nodes/MembraneLeakCapNode.cpp
@@ -172,4 +174,5 @@ target_link_libraries(neuralApp PRIVATE
     juce::juce_gui_extra
     juce::juce_audio_utils
     juce::juce_javascript
+    juce::juce_osc
 )

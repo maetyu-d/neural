@@ -29,17 +29,23 @@ void AllpassBankNode::reset(double sampleRate) {
 }
 
 void AllpassBankNode::process(std::span<const float> inA,
-                              std::span<const float>,
+                              std::span<const float> inB,
                               std::span<float> out) {
-    const auto n = std::min(inA.size(), out.size());
+    const auto n = std::min({inA.size(), inB.size(), out.size()});
     for (std::size_t i = 0; i < n; ++i) {
+        const float mod = std::clamp(inB[i], -1.0f, 1.0f);
+        const float dynFeedback = std::clamp(feedback_ + (0.15f * mod), -0.99f, 0.99f);
         float x = inA[i];
         for (std::size_t s = 0; s < kStages; ++s) {
             auto& buffer = buffers_[s];
-            const auto read = (writes_[s] + buffer.size() - delays_[s]) % buffer.size();
+            const float stageScale = 1.0f + spread_ * static_cast<float>(s);
+            const float dynDelayMs = std::clamp(baseDelayMs_ * stageScale * (1.0f + 0.4f * mod), 0.1f, 40.0f);
+            const auto dynSamples = static_cast<std::size_t>((dynDelayMs * 0.001f) * static_cast<float>(sampleRate_));
+            const auto tap = std::clamp<std::size_t>(dynSamples, 1, 4095);
+            const auto read = (writes_[s] + buffer.size() - tap) % buffer.size();
             const float delayed = buffer[read];
-            const float y = -feedback_ * x + delayed;
-            buffer[writes_[s]] = x + feedback_ * y;
+            const float y = -dynFeedback * x + delayed;
+            buffer[writes_[s]] = x + dynFeedback * y;
             writes_[s] = (writes_[s] + 1) % buffer.size();
             x = y;
         }

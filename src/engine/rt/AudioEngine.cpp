@@ -15,6 +15,7 @@
 #include "../nodes/CrossfadeVCANode.h"
 #include "../nodes/CounterNode.h"
 #include "../nodes/DelayShortNode.h"
+#include "../nodes/DivideNode.h"
 #include "../nodes/DendriteNonlinearityNode.h"
 #include "../nodes/DendriteSumNode.h"
 #include "../nodes/DriftNode.h"
@@ -61,9 +62,11 @@
 
 #include <juce_audio_formats/juce_audio_formats.h>
 #include <algorithm>
+#include <bit>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <span>
 
@@ -73,6 +76,78 @@ namespace {
 constexpr float kCycleConvergenceThreshold = 1.0e-4f;
 constexpr float kSchmittHigh = 0.7f;
 constexpr float kSchmittLow = 0.3f;
+constexpr std::uint32_t kBitMask16 = 0xFFFFu;
+
+std::uint16_t signalToWord(float x) {
+    if (x >= -1.0f && x <= 1.0f) {
+        const float n = std::clamp((x + 1.0f) * 0.5f, 0.0f, 1.0f);
+        return static_cast<std::uint16_t>(std::lround(n * static_cast<float>(kBitMask16)));
+    }
+    const float v = std::clamp(std::round(x), 0.0f, static_cast<float>(kBitMask16));
+    return static_cast<std::uint16_t>(v);
+}
+
+float wordToSignal(std::uint16_t w) {
+    return (static_cast<float>(w) / static_cast<float>(kBitMask16)) * 2.0f - 1.0f;
+}
+
+int bitAmountFromSignal(float x, int maxAmount) {
+    const int m = std::max(0, maxAmount);
+    if (m == 0) {
+        return 0;
+    }
+    if (x >= -1.0f && x <= 1.0f) {
+        const float n = std::clamp((x + 1.0f) * 0.5f, 0.0f, 1.0f);
+        return std::clamp(static_cast<int>(std::lround(n * static_cast<float>(m))), 0, m);
+    }
+    return std::clamp(static_cast<int>(std::lround(std::abs(x))), 0, m);
+}
+
+int bitsDepthFromSignal(float x) {
+    const int amount = bitAmountFromSignal(x, 15);
+    return std::clamp(amount + 1, 1, 16);
+}
+
+AudioEngine::ProcessorKind kindForTypeName(const std::string& typeName) {
+    using K = AudioEngine::ProcessorKind;
+    if (typeName == "Oscillator") return K::Oscillator;
+    if (typeName == "BiquadCore") return K::BiquadCore;
+    if (typeName == "DelayShort") return K::DelayShort;
+    if (typeName == "Saturator") return K::Saturator;
+    if (typeName == "Waveshaper") return K::Waveshaper;
+    if (typeName == "Allpass") return K::Allpass;
+    if (typeName == "AllpassBank") return K::AllpassBank;
+    if (typeName == "CombFilter") return K::CombFilter;
+    if (typeName == "DiffusionBlock") return K::DiffusionBlock;
+    if (typeName == "FeedbackTap") return K::FeedbackTap;
+    if (typeName == "SampleHoldGated") return K::SampleHoldGated;
+    if (typeName == "SampleHoldClocked") return K::SampleHoldClocked;
+    if (typeName == "SampleHoldSlew") return K::SampleHoldSlew;
+    if (typeName == "SampleHoldQuantized") return K::SampleHoldQuantized;
+    if (typeName == "SamplePlayerWav") return K::SamplePlayerWav;
+    if (typeName == "SchmittTrigger") return K::SchmittTrigger;
+    if (typeName == "WindowComparator") return K::WindowComparator;
+    if (typeName == "Modulo") return K::Modulo;
+    if (typeName == "Counter") return K::Counter;
+    if (typeName == "Constant") return K::Constant;
+    if (typeName == "Compare") return K::Compare;
+    if (typeName == "RandomGate") return K::RandomGate;
+    if (typeName == "SlopeDetect") return K::SlopeDetect;
+    if (typeName == "AdaptiveThreshold") return K::AdaptiveThreshold;
+    if (typeName == "RefractoryGate") return K::RefractoryGate;
+    if (typeName == "SpikeGenerator") return K::SpikeGenerator;
+    if (typeName == "MembraneLeakCap") return K::MembraneLeakCap;
+    if (typeName == "DendriteSum") return K::DendriteSum;
+    if (typeName == "DendriteNonlinearity") return K::DendriteNonlinearity;
+    if (typeName == "BurstNeuron") return K::BurstNeuron;
+    if (typeName == "NeuronCore") return K::NeuronCore;
+    if (typeName == "ScopeProbe") return K::ScopeProbe;
+    return K::Unknown;
+}
+
+std::uint64_t inputKey(neurons::engine::core::NodeId nodeId, neurons::engine::core::PortIndex port) {
+    return (static_cast<std::uint64_t>(nodeId) << 32u) | static_cast<std::uint64_t>(port);
+}
 
 bool allConverged(const std::vector<std::uint8_t>& converged, int numSamples) {
     return std::all_of(converged.begin(), converged.begin() + numSamples, [](std::uint8_t v) {
@@ -82,7 +157,11 @@ bool allConverged(const std::vector<std::uint8_t>& converged, int numSamples) {
 } // namespace
 
 AudioEngine::AudioEngine()
-    : cycleSolver_(neurons::engine::dsp::CycleConfig{}) {}
+    : cycleSolver_(neurons::engine::dsp::CycleConfig{}) {
+    std::atomic_store(&latestOscInputValues_,
+                      std::shared_ptr<const std::unordered_map<neurons::engine::core::NodeId, float>>(
+                          std::make_shared<std::unordered_map<neurons::engine::core::NodeId, float>>()));
+}
 
 void AudioEngine::prepareToPlay(int maxBlockSize, double sampleRate) {
     {
@@ -144,6 +223,8 @@ void AudioEngine::processBlock(float* left, float* right, int numSamples) {
     }
 
     rebuildRuntimeGraph(snapshot->graph, numSamples);
+    bitWordsScratch_.clear();
+    oscOutputScratch_.clear();
 
     for (const auto nodeId : snapshot->schedule.acyclicOrder) {
         processNode(snapshot->graph, snapshot->nodeParams, nodeId, numSamples);
@@ -226,6 +307,14 @@ void AudioEngine::processBlock(float* left, float* right, int numSamples) {
 
     const auto stats = cycleSolver_.processSamples(numSamples, converged_.data());
     (void)stats;
+    std::atomic_store(
+        &latestBitWords_,
+        std::shared_ptr<const std::unordered_map<neurons::engine::core::NodeId, std::uint16_t>>(
+            std::make_shared<std::unordered_map<neurons::engine::core::NodeId, std::uint16_t>>(bitWordsScratch_)));
+    std::atomic_store(
+        &latestOscOutputValues_,
+        std::shared_ptr<const std::unordered_map<neurons::engine::core::NodeId, float>>(
+            std::make_shared<std::unordered_map<neurons::engine::core::NodeId, float>>(oscOutputScratch_)));
 
     const auto blockEnd = std::chrono::high_resolution_clock::now();
     const double elapsedSec = std::chrono::duration<double>(blockEnd - blockStart).count();
@@ -248,10 +337,23 @@ void AudioEngine::releaseResources() {
     processors_.clear();
     outputs_.clear();
     switchSelectState_.clear();
+    bitDelayLines_.clear();
+    bitWordsScratch_.clear();
+    oscOutputScratch_.clear();
+    processorKinds_.clear();
+    incomingCache_.clear();
+    incomingCacheRevision_ = std::numeric_limits<std::uint64_t>::max();
     nodeScripts_.clear();
     sampleClips_.clear();
     std::atomic_store(&latestScopeProbeTrace_, std::shared_ptr<const std::vector<float>>{});
     std::atomic_store(&observedNodeTrace_, std::shared_ptr<const std::vector<float>>{});
+    std::atomic_store(&latestBitWords_,
+                      std::shared_ptr<const std::unordered_map<neurons::engine::core::NodeId, std::uint16_t>>{});
+    std::atomic_store(&latestOscOutputValues_,
+                      std::shared_ptr<const std::unordered_map<neurons::engine::core::NodeId, float>>{});
+    std::atomic_store(&latestOscInputValues_,
+                      std::shared_ptr<const std::unordered_map<neurons::engine::core::NodeId, float>>(
+                          std::make_shared<std::unordered_map<neurons::engine::core::NodeId, float>>()));
     converged_.clear();
     iterationConverged_.clear();
     fallbackLeft_.clear();
@@ -346,6 +448,42 @@ float AudioEngine::observedNodePeak() const {
     return observedNodePeak_.load(std::memory_order_relaxed);
 }
 
+void AudioEngine::setOscInputValue(neurons::engine::core::NodeId nodeId, float value) {
+    auto current = std::atomic_load(&latestOscInputValues_);
+    auto next = std::make_shared<std::unordered_map<neurons::engine::core::NodeId, float>>();
+    if (current != nullptr) {
+        *next = *current;
+    }
+    (*next)[nodeId] = value;
+    std::atomic_store(&latestOscInputValues_,
+                      std::shared_ptr<const std::unordered_map<neurons::engine::core::NodeId, float>>(next));
+}
+
+std::vector<std::pair<neurons::engine::core::NodeId, float>> AudioEngine::latestOscOutputs() const {
+    std::vector<std::pair<neurons::engine::core::NodeId, float>> out;
+    const auto values = std::atomic_load(&latestOscOutputValues_);
+    if (values == nullptr) {
+        return out;
+    }
+    out.reserve(values->size());
+    for (const auto& [id, v] : *values) {
+        out.emplace_back(id, v);
+    }
+    return out;
+}
+
+std::optional<std::uint16_t> AudioEngine::latestBitWord(neurons::engine::core::NodeId nodeId) const {
+    const auto words = std::atomic_load(&latestBitWords_);
+    if (words == nullptr) {
+        return std::nullopt;
+    }
+    const auto it = words->find(nodeId);
+    if (it == words->end()) {
+        return std::nullopt;
+    }
+    return it->second;
+}
+
 neurons::engine::core::GraphModel& AudioEngine::graph() {
     return graph_;
 }
@@ -419,6 +557,12 @@ void AudioEngine::replaceGraphAndParams(const neurons::engine::core::GraphModel&
     processors_.clear();
     outputs_.clear();
     switchSelectState_.clear();
+    bitDelayLines_.clear();
+    bitWordsScratch_.clear();
+    oscOutputScratch_.clear();
+    processorKinds_.clear();
+    incomingCache_.clear();
+    incomingCacheRevision_ = std::numeric_limits<std::uint64_t>::max();
     for (auto it = nodeScripts_.begin(); it != nodeScripts_.end();) {
         if (graph_.getNode(it->first) == nullptr) {
             it = nodeScripts_.erase(it);
@@ -436,160 +580,20 @@ void AudioEngine::replaceGraphAndParams(const neurons::engine::core::GraphModel&
 }
 
 void AudioEngine::createDefaultGraphIfEmpty() {
-    if (!graph_.nodes().empty()) {
-        return;
-    }
-
-    using neurons::engine::core::NodeSpec;
-    using neurons::engine::core::PortSpec;
-    using neurons::engine::core::SignalType;
-
-    auto makeStereoOut = []() {
-        NodeSpec n;
-        n.typeName = "OutputStereo";
-        n.inputs = {
-            PortSpec{0, SignalType::BipolarAudio, "in_l"},
-            PortSpec{1, SignalType::BipolarAudio, "in_r"},
-        };
-        n.outputs = {
-            PortSpec{0, SignalType::BipolarAudio, "tap"},
-        };
-        return n;
-    };
-    auto makeOsc = []() {
-        NodeSpec n;
-        n.typeName = "Oscillator";
-        n.inputs = {
-            PortSpec{0, SignalType::HzAudio, "freq_hz"},
-            PortSpec{1, SignalType::BipolarAudio, "phase_mod"},
-        };
-        n.outputs = {
-            PortSpec{0, SignalType::BipolarAudio, "out"},
-        };
-        return n;
-    };
-    auto makeMix = []() {
-        NodeSpec n;
-        n.typeName = "Mix";
-        n.inputs = {
-            PortSpec{0, SignalType::BipolarAudio, "in1"},
-            PortSpec{1, SignalType::BipolarAudio, "in2"},
-        };
-        n.outputs = {
-            PortSpec{0, SignalType::BipolarAudio, "out"},
-        };
-        return n;
-    };
-    auto makeDrift = []() {
-        NodeSpec n;
-        n.typeName = "Drift";
-        n.inputs = {
-            PortSpec{0, SignalType::BipolarAudio, "in"},
-            PortSpec{1, SignalType::BipolarAudio, "aux"},
-        };
-        n.outputs = {
-            PortSpec{0, SignalType::BipolarAudio, "out"},
-        };
-        return n;
-    };
-    auto makeBiquad = []() {
-        NodeSpec n;
-        n.typeName = "BiquadCore";
-        n.inputs = {
-            PortSpec{0, SignalType::BipolarAudio, "in"},
-            PortSpec{1, SignalType::HzAudio, "cutoff"},
-        };
-        n.outputs = {
-            PortSpec{0, SignalType::BipolarAudio, "out"},
-        };
-        return n;
-    };
-    auto makeDelay = []() {
-        NodeSpec n;
-        n.typeName = "DelayShort";
-        n.inputs = {
-            PortSpec{0, SignalType::BipolarAudio, "in"},
-            PortSpec{1, SignalType::TimeAudio, "time"},
-        };
-        n.outputs = {
-            PortSpec{0, SignalType::BipolarAudio, "out"},
-        };
-        return n;
-    };
-    auto makeSat = []() {
-        NodeSpec n;
-        n.typeName = "Saturator";
-        n.inputs = {
-            PortSpec{0, SignalType::BipolarAudio, "in"},
-            PortSpec{1, SignalType::BipolarAudio, "side"},
-        };
-        n.outputs = {
-            PortSpec{0, SignalType::BipolarAudio, "out"},
-        };
-        return n;
-    };
-    auto makeProbe = []() {
-        NodeSpec n;
-        n.typeName = "ScopeProbe";
-        n.inputs = {
-            PortSpec{0, SignalType::BipolarAudio, "in"},
-            PortSpec{1, SignalType::BipolarAudio, "aux"},
-        };
-        n.outputs = {
-            PortSpec{0, SignalType::BipolarAudio, "through"},
-        };
-        return n;
-    };
-
-    // Startup demo: drifting dual oscillators -> blend -> filter -> short delay -> saturator -> output.
-    auto out = makeStereoOut();
-    out.id = 1;
-    auto oscA = makeOsc();
-    oscA.id = 2;
-    auto oscB = makeOsc();
-    oscB.id = 3;
-    auto drift = makeDrift();
-    drift.id = 4;
-    auto blend = makeMix();
-    blend.id = 5;
-    auto filter = makeBiquad();
-    filter.id = 6;
-    auto delay = makeDelay();
-    delay.id = 7;
-    auto sat = makeSat();
-    sat.id = 8;
-    auto probe = makeProbe();
-    probe.id = 9;
-
-    graph_.addNode(std::move(out));
-    graph_.addNode(std::move(oscA));
-    graph_.addNode(std::move(oscB));
-    graph_.addNode(std::move(drift));
-    graph_.addNode(std::move(blend));
-    graph_.addNode(std::move(filter));
-    graph_.addNode(std::move(delay));
-    graph_.addNode(std::move(sat));
-    graph_.addNode(std::move(probe));
-
-    graph_.addConnection({4, 0, 2, 1}); // Drift modulates oscillator A phase.
-    graph_.addConnection({2, 0, 5, 0});
-    graph_.addConnection({3, 0, 5, 1});
-    graph_.addConnection({5, 0, 6, 0});
-    graph_.addConnection({6, 0, 7, 0});
-    graph_.addConnection({7, 0, 8, 0});
-    graph_.addConnection({8, 0, 1, 0});
-    graph_.addConnection({8, 0, 1, 1});
-    graph_.addConnection({8, 0, 9, 0}); // Probe final signal for diagnostics.
-
-    nodeParams_[2]["freq_hz"] = 220.0f;
-    nodeParams_[3]["freq_hz"] = 329.63f;
-    nodeParams_[5]["inlets"] = 2.0f;
-    nodeParams_[6]["cutoff_hz"] = 1400.0f;
-    nodeParams_[7]["delay_ms"] = 1.5f;
-    nodeParams_[8]["drive"] = 1.4f;
+    // Intentionally start from a blank canvas.
+    (void)graph_;
 }
 
 void AudioEngine::rebuildRuntimeGraph(const neurons::engine::core::GraphModel& graph, int numSamples) {
+    if (incomingCacheRevision_ != graph.revision()) {
+        incomingCache_.clear();
+        incomingCache_.reserve(graph.connections().size());
+        for (const auto& c : graph.connections()) {
+            incomingCache_[inputKey(c.toNode, c.toPort)].push_back(InputRef{c.fromNode, c.fromPort});
+        }
+        incomingCacheRevision_ = graph.revision();
+    }
+
     for (const auto& [nodeId, spec] : graph.nodes()) {
         if (processors_.find(nodeId) == processors_.end()) {
             auto processor = createProcessor(spec.typeName);
@@ -608,7 +612,11 @@ void AudioEngine::rebuildRuntimeGraph(const neurons::engine::core::GraphModel& g
                     }
                 }
                 processors_.emplace(nodeId, std::move(processor));
+                processorKinds_[nodeId] = kindForTypeName(spec.typeName);
             }
+        }
+        if (processorKinds_.find(nodeId) == processorKinds_.end()) {
+            processorKinds_[nodeId] = kindForTypeName(spec.typeName);
         }
 
         const std::size_t portCount = std::max<std::size_t>(1, spec.outputs.size());
@@ -632,6 +640,10 @@ void AudioEngine::rebuildRuntimeGraph(const neurons::engine::core::GraphModel& g
             nodeScripts_.erase(it->first);
             sampleClips_.erase(it->first);
             switchSelectState_.erase(it->first);
+            bitDelayLines_.erase(it->first);
+            bitWordsScratch_.erase(it->first);
+            oscOutputScratch_.erase(it->first);
+            processorKinds_.erase(it->first);
             it = processors_.erase(it);
         } else {
             ++it;
@@ -665,6 +677,9 @@ std::unique_ptr<neurons::engine::nodes::NodeProcessor> AudioEngine::createProces
     }
     if (typeName == "Multiply") {
         return std::make_unique<MultiplyNode>();
+    }
+    if (typeName == "Divide") {
+        return std::make_unique<DivideNode>();
     }
     if (typeName == "Constant") {
         return std::make_unique<ConstantNode>();
@@ -849,6 +864,9 @@ void AudioEngine::processNode(const neurons::engine::core::GraphModel& graph,
         }
         return paramIt->second;
     };
+    const auto hasInputConnection = [&](neurons::engine::core::PortIndex port) {
+        return hasIncomingConnection(nodeId, port);
+    };
 
     if (nodeSpec->typeName == "MatrixMixer") {
         const int inCount = std::min<int>(4, static_cast<int>(nodeSpec->inputs.size()));
@@ -899,6 +917,134 @@ void AudioEngine::processNode(const neurons::engine::core::GraphModel& graph,
             std::atomic_store(&observedNodeTrace_, std::shared_ptr<const std::vector<float>>(trace));
         }
         return;
+    }
+
+    const auto& type = nodeSpec->typeName;
+    const bool isBitOpType =
+        type == "BitAnd" || type == "BitOr" || type == "BitXor" || type == "BitNot" ||
+        type == "ShiftLeft" || type == "ShiftRight" || type == "RotateLeft" || type == "RotateRight" ||
+        type == "BitMask" || type == "BitSet" || type == "BitClear" || type == "BitToggle" ||
+        type == "BitExtract" || type == "BitPack" || type == "BitUnpack" || type == "Popcount" ||
+        type == "Parity" || type == "LeadingZeros" || type == "TrailingZeros" || type == "ByteSwap" ||
+        type == "BitCrush" || type == "BitQuantize" || type == "BitDelayPerBit";
+
+    if (isBitOpType) {
+        gatherInputForPort(graph, nodeId, 0, inputA_.data(), numSamples);
+        gatherInputForPort(graph, nodeId, 1, inputB_.data(), numSamples);
+        const bool hasBConnection = hasInputConnection(1);
+        if (!hasBConnection) {
+            const float fallback = paramFor("b_value", 0.0f);
+            std::fill_n(inputB_.begin(), numSamples, fallback);
+        }
+
+        auto* out = nodeOutputs[0].data();
+        BitDelayLine* delayLine = nullptr;
+        if (type == "BitDelayPerBit") {
+            auto& line = bitDelayLines_[nodeId];
+            if (line.words.empty()) {
+                line.words.assign(8192, 0u);
+                line.write = 0;
+            }
+            delayLine = &line;
+        }
+
+        std::uint16_t latestWord = 0u;
+        for (int i = 0; i < numSamples; ++i) {
+            const float a = inputA_[static_cast<std::size_t>(i)];
+            const float b = inputB_[static_cast<std::size_t>(i)];
+            const std::uint16_t aWord = signalToWord(a);
+            const std::uint16_t bWord = signalToWord(b);
+            std::uint16_t outWord = 0u;
+
+            if (type == "BitAnd") outWord = static_cast<std::uint16_t>(aWord & bWord);
+            else if (type == "BitOr") outWord = static_cast<std::uint16_t>(aWord | bWord);
+            else if (type == "BitXor") outWord = static_cast<std::uint16_t>(aWord ^ bWord);
+            else if (type == "BitNot") outWord = static_cast<std::uint16_t>(~aWord);
+            else if (type == "ShiftLeft") {
+                const int s = bitAmountFromSignal(b, 15);
+                outWord = static_cast<std::uint16_t>((static_cast<std::uint32_t>(aWord) << s) & kBitMask16);
+            } else if (type == "ShiftRight") {
+                const int s = bitAmountFromSignal(b, 15);
+                outWord = static_cast<std::uint16_t>(aWord >> s);
+            } else if (type == "RotateLeft") {
+                const int s = bitAmountFromSignal(b, 15);
+                outWord = std::rotl(aWord, s);
+            } else if (type == "RotateRight") {
+                const int s = bitAmountFromSignal(b, 15);
+                outWord = std::rotr(aWord, s);
+            } else if (type == "BitMask") outWord = static_cast<std::uint16_t>(aWord & bWord);
+            else if (type == "BitSet") {
+                const int idx = bitAmountFromSignal(b, 15);
+                outWord = static_cast<std::uint16_t>(aWord | (1u << idx));
+            } else if (type == "BitClear") {
+                const int idx = bitAmountFromSignal(b, 15);
+                outWord = static_cast<std::uint16_t>(aWord & ~(1u << idx));
+            } else if (type == "BitToggle") {
+                const int idx = bitAmountFromSignal(b, 15);
+                outWord = static_cast<std::uint16_t>(aWord ^ (1u << idx));
+            } else if (type == "BitExtract") {
+                const int idx = bitAmountFromSignal(b, 15);
+                outWord = ((aWord >> idx) & 0x1u) != 0u ? 0xFFFFu : 0u;
+            } else if (type == "BitPack") {
+                outWord = static_cast<std::uint16_t>(((aWord & 0x00FFu) << 8) | (bWord & 0x00FFu));
+            } else if (type == "BitUnpack") {
+                const int which = bitAmountFromSignal(b, 1);
+                const std::uint16_t byte = static_cast<std::uint16_t>(which == 0 ? (aWord & 0x00FFu)
+                                                                                  : ((aWord >> 8) & 0x00FFu));
+                outWord = static_cast<std::uint16_t>((byte << 8) | byte);
+            } else if (type == "Popcount") {
+                const int c = std::popcount(aWord);
+                outWord = static_cast<std::uint16_t>(std::lround((static_cast<float>(c) / 16.0f) * static_cast<float>(kBitMask16)));
+            } else if (type == "Parity") {
+                outWord = (std::popcount(aWord) & 1) != 0 ? 0xFFFFu : 0u;
+            } else if (type == "LeadingZeros") {
+                const int c = std::countl_zero(aWord);
+                outWord = static_cast<std::uint16_t>(std::lround((static_cast<float>(c) / 16.0f) * static_cast<float>(kBitMask16)));
+            } else if (type == "TrailingZeros") {
+                const int c = std::countr_zero(aWord);
+                outWord = static_cast<std::uint16_t>(std::lround((static_cast<float>(c) / 16.0f) * static_cast<float>(kBitMask16)));
+            } else if (type == "ByteSwap") {
+                outWord = static_cast<std::uint16_t>(((aWord & 0x00FFu) << 8) | ((aWord & 0xFF00u) >> 8));
+            } else if (type == "BitCrush") {
+                const int bits = bitsDepthFromSignal(b);
+                if (bits >= 16) {
+                    outWord = aWord;
+                } else {
+                    const std::uint16_t keepMask = static_cast<std::uint16_t>(~((1u << (16 - bits)) - 1u) & kBitMask16);
+                    outWord = static_cast<std::uint16_t>(aWord & keepMask);
+                }
+            } else if (type == "BitQuantize") {
+                const int bits = bitsDepthFromSignal(b);
+                const int levels = (1 << bits) - 1;
+                const float n = std::clamp((a + 1.0f) * 0.5f, 0.0f, 1.0f);
+                const float q = std::round(n * static_cast<float>(levels)) / static_cast<float>(levels);
+                const float y = std::clamp((q * 2.0f) - 1.0f, -1.0f, 1.0f);
+                out[static_cast<std::size_t>(i)] = y;
+                latestWord = signalToWord(y);
+                continue;
+            } else if (type == "BitDelayPerBit") {
+                auto& line = *delayLine;
+                line.words[line.write] = aWord;
+                const int base = bitAmountFromSignal(b, 64);
+                std::uint16_t delayedWord = 0u;
+                const std::size_t size = line.words.size();
+                for (int bit = 0; bit < 16; ++bit) {
+                    const std::size_t d = static_cast<std::size_t>(base * (bit + 1));
+                    const std::size_t read = (line.write + size - (d % size)) % size;
+                    const std::uint16_t srcWord = line.words[read];
+                    if (((srcWord >> bit) & 0x1u) != 0u) {
+                        delayedWord = static_cast<std::uint16_t>(delayedWord | (1u << bit));
+                    }
+                }
+                outWord = delayedWord;
+                line.write = (line.write + 1) % line.words.size();
+            }
+
+            out[static_cast<std::size_t>(i)] = wordToSignal(outWord);
+            latestWord = outWord;
+        }
+        bitWordsScratch_[nodeId] = latestWord;
+        return;
     } else if (procIt == processors_.end()) {
         return;
     }
@@ -932,13 +1078,7 @@ void AudioEngine::processNode(const neurons::engine::core::GraphModel& graph,
         gatherInputForPort(graph, nodeId, 1, inputB_.data(), numSamples);
         gatherInputForPort(graph, nodeId, 2, scratch_.data(), numSamples);
 
-        bool hasSelectConnection = false;
-        for (const auto& c : graph.connections()) {
-            if (c.toNode == nodeId && c.toPort == 2) {
-                hasSelectConnection = true;
-                break;
-            }
-        }
+        const bool hasSelectConnection = hasInputConnection(2);
 
         if (!hasSelectConnection) {
             const bool selectB = (paramFor("select_b", 0.0f) >= 0.5f);
@@ -969,106 +1109,236 @@ void AudioEngine::processNode(const neurons::engine::core::GraphModel& graph,
         return;
     }
 
+    if (nodeSpec->typeName == "OSCInput") {
+        float v = 0.0f;
+        if (const auto values = std::atomic_load(&latestOscInputValues_); values != nullptr) {
+            if (const auto it = values->find(nodeId); it != values->end()) {
+                v = it->second;
+            }
+        }
+        std::fill_n(nodeOutputs[0].begin(), numSamples, v);
+        return;
+    }
+
+    if (nodeSpec->typeName == "OSCOutput") {
+        gatherInputForPort(graph, nodeId, 0, inputA_.data(), numSamples);
+        std::copy_n(inputA_.begin(), numSamples, nodeOutputs[0].begin());
+        if (numSamples > 0) {
+            oscOutputScratch_[nodeId] = inputA_[static_cast<std::size_t>(numSamples - 1)];
+        }
+        return;
+    }
+
+    if (nodeSpec->typeName == "Multiply") {
+        gatherInputForPort(graph, nodeId, 0, inputA_.data(), numSamples);
+        gatherInputForPort(graph, nodeId, 1, inputB_.data(), numSamples);
+        const bool hasBConnection = hasInputConnection(1);
+        if (!hasBConnection) {
+            const float multiplicand = paramFor("multiplicand", 1.0f);
+            std::fill_n(inputB_.begin(), numSamples, multiplicand);
+        }
+        procIt->second->process(std::span<const float>(inputA_.data(), static_cast<std::size_t>(numSamples)),
+                                std::span<const float>(inputB_.data(), static_cast<std::size_t>(numSamples)),
+                                std::span<float>(nodeOutputs[0].data(), static_cast<std::size_t>(numSamples)));
+        return;
+    }
+
     gatherInputForPort(graph, nodeId, 0, inputA_.data(), numSamples);
     gatherInputForPort(graph, nodeId, 1, inputB_.data(), numSamples);
+    if (!hasInputConnection(1)) {
+        if (nodeSpec->typeName == "Add" || nodeSpec->typeName == "Compare" || nodeSpec->typeName == "Divide") {
+            const float bValue = paramFor("b_value", 0.0f);
+            std::fill_n(inputB_.begin(), numSamples, bValue);
+        }
+    }
 
-    if (auto* osc = dynamic_cast<neurons::engine::nodes::OscillatorNode*>(procIt->second.get()); osc != nullptr) {
-        osc->setFrequencyHz(paramFor("freq_hz", 220.0f));
-    } else if (auto* biquad = dynamic_cast<neurons::engine::nodes::BiquadCoreNode*>(procIt->second.get()); biquad != nullptr) {
-        biquad->setCutoffHz(paramFor("cutoff_hz", 1200.0f));
-    } else if (auto* delay = dynamic_cast<neurons::engine::nodes::DelayShortNode*>(procIt->second.get()); delay != nullptr) {
-        delay->setDelayMs(paramFor("delay_ms", 1.33f));
-    } else if (auto* sat = dynamic_cast<neurons::engine::nodes::SaturatorNode*>(procIt->second.get()); sat != nullptr) {
-        sat->setDrive(paramFor("drive", 1.0f));
-    } else if (auto* shaper = dynamic_cast<neurons::engine::nodes::WaveshaperNode*>(procIt->second.get()); shaper != nullptr) {
-        shaper->setDrive(paramFor("drive", 1.0f));
-        shaper->setCurve(paramFor("curve", 0.5f));
-    } else if (auto* allpass = dynamic_cast<neurons::engine::nodes::AllpassNode*>(procIt->second.get()); allpass != nullptr) {
-        allpass->setDelayMs(paramFor("delay_ms", 6.0f));
-        allpass->setFeedback(paramFor("feedback", 0.6f));
-    } else if (auto* bank = dynamic_cast<neurons::engine::nodes::AllpassBankNode*>(procIt->second.get()); bank != nullptr) {
-        bank->setBaseDelayMs(paramFor("delay_ms", 4.0f));
-        bank->setFeedback(paramFor("feedback", 0.6f));
-        bank->setSpread(paramFor("spread", 0.35f));
-    } else if (auto* comb = dynamic_cast<neurons::engine::nodes::CombFilterNode*>(procIt->second.get()); comb != nullptr) {
-        comb->setDelayMs(paramFor("delay_ms", 18.0f));
-        comb->setFeedback(paramFor("feedback", 0.75f));
-        comb->setDamping(paramFor("damping", 0.2f));
-    } else if (auto* diff = dynamic_cast<neurons::engine::nodes::DiffusionBlockNode*>(procIt->second.get()); diff != nullptr) {
-        diff->setSizeMs(paramFor("size_ms", 12.0f));
-        diff->setFeedback(paramFor("feedback", 0.6f));
-        diff->setMix(paramFor("mix", 0.5f));
-    } else if (auto* tap = dynamic_cast<neurons::engine::nodes::FeedbackTapNode*>(procIt->second.get()); tap != nullptr) {
-        tap->setLoopMs(paramFor("loop_ms", 250.0f));
-        tap->setReinject(paramFor("reinject", 0.35f));
-        tap->setFreeze(paramFor("freeze", 0.0f) >= 0.5f);
-    } else if (auto* shGated = dynamic_cast<neurons::engine::nodes::SampleHoldGatedNode*>(procIt->second.get()); shGated != nullptr) {
-        shGated->setThreshold(paramFor("threshold", 0.5f));
-    } else if (auto* shClocked = dynamic_cast<neurons::engine::nodes::SampleHoldClockedNode*>(procIt->second.get()); shClocked != nullptr) {
-        shClocked->setLowHigh(paramFor("low", 0.3f), paramFor("high", 0.7f));
-    } else if (auto* shSlew = dynamic_cast<neurons::engine::nodes::SampleHoldSlewNode*>(procIt->second.get()); shSlew != nullptr) {
-        shSlew->setLowHigh(paramFor("low", 0.3f), paramFor("high", 0.7f));
-        shSlew->setSlewMs(paramFor("slew_ms", 8.0f));
-    } else if (auto* shQuant = dynamic_cast<neurons::engine::nodes::SampleHoldQuantizedNode*>(procIt->second.get()); shQuant != nullptr) {
-        shQuant->setThreshold(paramFor("threshold", 0.5f));
-        shQuant->setSteps(paramFor("steps", 12.0f));
-    } else if (auto* player = dynamic_cast<neurons::engine::nodes::SamplePlayerWavNode*>(procIt->second.get()); player != nullptr) {
-        player->setBaseRate(paramFor("rate", 1.0f));
-        player->setCvOctaves(paramFor("cv_octaves", 1.0f));
-    } else if (auto* schmitt = dynamic_cast<neurons::engine::nodes::SchmittTriggerNode*>(procIt->second.get()); schmitt != nullptr) {
-        schmitt->setThreshold(paramFor("threshold", 0.5f));
-        schmitt->setHysteresis(paramFor("hysteresis", 0.2f));
-    } else if (auto* window = dynamic_cast<neurons::engine::nodes::WindowComparatorNode*>(procIt->second.get()); window != nullptr) {
-        window->setCenter(paramFor("center", 0.0f));
-        window->setWidth(paramFor("width", 0.5f));
-    } else if (auto* modulo = dynamic_cast<neurons::engine::nodes::ModuloNode*>(procIt->second.get()); modulo != nullptr) {
-        modulo->setModulus(paramFor("modulus", 1.0f));
-    } else if (auto* counter = dynamic_cast<neurons::engine::nodes::CounterNode*>(procIt->second.get()); counter != nullptr) {
-        counter->setRange(paramFor("min", 0.0f), paramFor("max", 15.0f));
-        counter->setWrapMode(paramFor("wrap", 1.0f) >= 0.5f);
-    } else if (auto* constant = dynamic_cast<neurons::engine::nodes::ConstantNode*>(procIt->second.get()); constant != nullptr) {
-        constant->setValue(paramFor("value", 0.0f));
-    } else if (auto* compare = dynamic_cast<neurons::engine::nodes::CompareNode*>(procIt->second.get()); compare != nullptr) {
-        compare->setGreaterMode(paramFor("greater", 1.0f) >= 0.5f);
-    } else if (auto* randomGate = dynamic_cast<neurons::engine::nodes::RandomGateNode*>(procIt->second.get()); randomGate != nullptr) {
-        randomGate->setProbability(paramFor("prob", 0.5f));
-        randomGate->setPulseMs(paramFor("pulse_ms", 2.0f));
-    } else if (auto* probe = dynamic_cast<neurons::engine::nodes::ScopeProbeNode*>(procIt->second.get()); probe != nullptr) {
-        (void)probe;
-    } else if (auto* slope = dynamic_cast<neurons::engine::nodes::SlopeDetectNode*>(procIt->second.get()); slope != nullptr) {
-        slope->setThreshold(paramFor("threshold", 1.0e-4f));
-    } else if (auto* adaptive = dynamic_cast<neurons::engine::nodes::AdaptiveThresholdNode*>(procIt->second.get()); adaptive != nullptr) {
-        adaptive->setBaseThreshold(paramFor("base_threshold", 0.5f));
-        adaptive->setAdaptAmount(paramFor("adapt", 0.25f));
-    } else if (auto* refractory = dynamic_cast<neurons::engine::nodes::RefractoryGateNode*>(procIt->second.get()); refractory != nullptr) {
-        refractory->setRefractoryMs(paramFor("refractory_ms", 30.0f));
-        refractory->setPulseMs(paramFor("pulse_ms", 1.0f));
-    } else if (auto* spike = dynamic_cast<neurons::engine::nodes::SpikeGeneratorNode*>(procIt->second.get()); spike != nullptr) {
-        spike->setThreshold(paramFor("threshold", 0.5f));
-        spike->setPulseMs(paramFor("pulse_ms", 1.0f));
-    } else if (auto* membrane = dynamic_cast<neurons::engine::nodes::MembraneLeakCapNode*>(procIt->second.get()); membrane != nullptr) {
-        membrane->setTauMs(paramFor("tau_ms", 20.0f));
-        membrane->setLeak(paramFor("leak", 0.01f));
-    } else if (auto* dendriteSum = dynamic_cast<neurons::engine::nodes::DendriteSumNode*>(procIt->second.get()); dendriteSum != nullptr) {
-        dendriteSum->setGains(paramFor("gain_a", 1.0f), paramFor("gain_b", 1.0f));
-    } else if (auto* dendriteNl = dynamic_cast<neurons::engine::nodes::DendriteNonlinearityNode*>(procIt->second.get()); dendriteNl != nullptr) {
-        dendriteNl->setDrive(paramFor("drive", 1.0f));
-        dendriteNl->setBias(paramFor("bias", 0.0f));
-    } else if (auto* burst = dynamic_cast<neurons::engine::nodes::BurstNeuronNode*>(procIt->second.get()); burst != nullptr) {
-        burst->setCount(paramFor("count", 3.0f));
-        burst->setIntervalMs(paramFor("interval_ms", 8.0f));
-    } else if (auto* neuron = dynamic_cast<neurons::engine::nodes::NeuronCoreNode*>(procIt->second.get()); neuron != nullptr) {
+    const auto kindIt = processorKinds_.find(nodeId);
+    const auto kind = kindIt != processorKinds_.end() ? kindIt->second : ProcessorKind::Unknown;
+    switch (kind) {
+    case ProcessorKind::Oscillator: {
+        auto* n = static_cast<neurons::engine::nodes::OscillatorNode*>(procIt->second.get());
+        n->setFrequencyHz(paramFor("freq_hz", 220.0f));
+        n->setWaveform(paramFor("waveform", 0.0f));
+        break;
+    }
+    case ProcessorKind::BiquadCore:
+        static_cast<neurons::engine::nodes::BiquadCoreNode*>(procIt->second.get())->setCutoffHz(paramFor("cutoff_hz", 1200.0f));
+        break;
+    case ProcessorKind::DelayShort:
+        static_cast<neurons::engine::nodes::DelayShortNode*>(procIt->second.get())->setDelayMs(paramFor("delay_ms", 1.33f));
+        break;
+    case ProcessorKind::Saturator:
+        static_cast<neurons::engine::nodes::SaturatorNode*>(procIt->second.get())->setDrive(paramFor("drive", 1.0f));
+        break;
+    case ProcessorKind::Waveshaper: {
+        auto* n = static_cast<neurons::engine::nodes::WaveshaperNode*>(procIt->second.get());
+        n->setDrive(paramFor("drive", 1.0f));
+        n->setCurve(paramFor("curve", 0.5f));
+        break;
+    }
+    case ProcessorKind::Allpass: {
+        auto* n = static_cast<neurons::engine::nodes::AllpassNode*>(procIt->second.get());
+        n->setDelayMs(paramFor("delay_ms", 6.0f));
+        n->setFeedback(paramFor("feedback", 0.6f));
+        break;
+    }
+    case ProcessorKind::AllpassBank: {
+        auto* n = static_cast<neurons::engine::nodes::AllpassBankNode*>(procIt->second.get());
+        n->setBaseDelayMs(paramFor("delay_ms", 4.0f));
+        n->setFeedback(paramFor("feedback", 0.6f));
+        n->setSpread(paramFor("spread", 0.35f));
+        break;
+    }
+    case ProcessorKind::CombFilter: {
+        auto* n = static_cast<neurons::engine::nodes::CombFilterNode*>(procIt->second.get());
+        n->setDelayMs(paramFor("delay_ms", 18.0f));
+        n->setFeedback(paramFor("feedback", 0.75f));
+        n->setDamping(paramFor("damping", 0.2f));
+        break;
+    }
+    case ProcessorKind::DiffusionBlock: {
+        auto* n = static_cast<neurons::engine::nodes::DiffusionBlockNode*>(procIt->second.get());
+        n->setSizeMs(paramFor("size_ms", 12.0f));
+        n->setFeedback(paramFor("feedback", 0.6f));
+        n->setMix(paramFor("mix", 0.5f));
+        break;
+    }
+    case ProcessorKind::FeedbackTap: {
+        auto* n = static_cast<neurons::engine::nodes::FeedbackTapNode*>(procIt->second.get());
+        n->setLoopMs(paramFor("loop_ms", 250.0f));
+        n->setReinject(paramFor("reinject", 0.35f));
+        n->setFreeze(paramFor("freeze", 0.0f) >= 0.5f);
+        break;
+    }
+    case ProcessorKind::SampleHoldGated:
+        static_cast<neurons::engine::nodes::SampleHoldGatedNode*>(procIt->second.get())->setThreshold(paramFor("threshold", 0.5f));
+        break;
+    case ProcessorKind::SampleHoldClocked:
+        static_cast<neurons::engine::nodes::SampleHoldClockedNode*>(procIt->second.get())
+            ->setLowHigh(paramFor("low", 0.3f), paramFor("high", 0.7f));
+        break;
+    case ProcessorKind::SampleHoldSlew: {
+        auto* n = static_cast<neurons::engine::nodes::SampleHoldSlewNode*>(procIt->second.get());
+        n->setLowHigh(paramFor("low", 0.3f), paramFor("high", 0.7f));
+        n->setSlewMs(paramFor("slew_ms", 8.0f));
+        break;
+    }
+    case ProcessorKind::SampleHoldQuantized: {
+        auto* n = static_cast<neurons::engine::nodes::SampleHoldQuantizedNode*>(procIt->second.get());
+        n->setThreshold(paramFor("threshold", 0.5f));
+        n->setSteps(paramFor("steps", 12.0f));
+        break;
+    }
+    case ProcessorKind::SamplePlayerWav: {
+        auto* n = static_cast<neurons::engine::nodes::SamplePlayerWavNode*>(procIt->second.get());
+        n->setBaseRate(paramFor("rate", 1.0f));
+        n->setCvOctaves(paramFor("cv_octaves", 1.0f));
+        break;
+    }
+    case ProcessorKind::SchmittTrigger: {
+        auto* n = static_cast<neurons::engine::nodes::SchmittTriggerNode*>(procIt->second.get());
+        n->setThreshold(paramFor("threshold", 0.5f));
+        n->setHysteresis(paramFor("hysteresis", 0.2f));
+        break;
+    }
+    case ProcessorKind::WindowComparator: {
+        auto* n = static_cast<neurons::engine::nodes::WindowComparatorNode*>(procIt->second.get());
+        n->setCenter(paramFor("center", 0.0f));
+        n->setWidth(paramFor("width", 0.5f));
+        break;
+    }
+    case ProcessorKind::Modulo:
+        static_cast<neurons::engine::nodes::ModuloNode*>(procIt->second.get())->setModulus(paramFor("modulus", 1.0f));
+        break;
+    case ProcessorKind::Counter: {
+        auto* n = static_cast<neurons::engine::nodes::CounterNode*>(procIt->second.get());
+        n->setRange(paramFor("min", 0.0f), paramFor("max", 15.0f));
+        n->setWrapMode(paramFor("wrap", 1.0f) >= 0.5f);
+        break;
+    }
+    case ProcessorKind::Constant:
+        static_cast<neurons::engine::nodes::ConstantNode*>(procIt->second.get())->setValue(paramFor("value", 0.0f));
+        break;
+    case ProcessorKind::Compare:
+        static_cast<neurons::engine::nodes::CompareNode*>(procIt->second.get())->setGreaterMode(paramFor("greater", 1.0f) >= 0.5f);
+        break;
+    case ProcessorKind::RandomGate: {
+        auto* n = static_cast<neurons::engine::nodes::RandomGateNode*>(procIt->second.get());
+        n->setProbability(paramFor("prob", 0.5f));
+        n->setPulseMs(paramFor("pulse_ms", 2.0f));
+        break;
+    }
+    case ProcessorKind::SlopeDetect:
+        static_cast<neurons::engine::nodes::SlopeDetectNode*>(procIt->second.get())->setThreshold(paramFor("threshold", 1.0e-4f));
+        break;
+    case ProcessorKind::AdaptiveThreshold: {
+        auto* n = static_cast<neurons::engine::nodes::AdaptiveThresholdNode*>(procIt->second.get());
+        n->setBaseThreshold(paramFor("base_threshold", 0.5f));
+        n->setAdaptAmount(paramFor("adapt", 0.25f));
+        break;
+    }
+    case ProcessorKind::RefractoryGate: {
+        auto* n = static_cast<neurons::engine::nodes::RefractoryGateNode*>(procIt->second.get());
+        n->setRefractoryMs(paramFor("refractory_ms", 30.0f));
+        n->setPulseMs(paramFor("pulse_ms", 1.0f));
+        break;
+    }
+    case ProcessorKind::SpikeGenerator: {
+        auto* n = static_cast<neurons::engine::nodes::SpikeGeneratorNode*>(procIt->second.get());
+        n->setThreshold(paramFor("threshold", 0.5f));
+        n->setPulseMs(paramFor("pulse_ms", 1.0f));
+        break;
+    }
+    case ProcessorKind::MembraneLeakCap: {
+        auto* n = static_cast<neurons::engine::nodes::MembraneLeakCapNode*>(procIt->second.get());
+        n->setTauMs(paramFor("tau_ms", 20.0f));
+        n->setLeak(paramFor("leak", 0.01f));
+        break;
+    }
+    case ProcessorKind::DendriteSum:
+        static_cast<neurons::engine::nodes::DendriteSumNode*>(procIt->second.get())
+            ->setGains(paramFor("gain_a", 1.0f), paramFor("gain_b", 1.0f));
+        break;
+    case ProcessorKind::DendriteNonlinearity: {
+        auto* n = static_cast<neurons::engine::nodes::DendriteNonlinearityNode*>(procIt->second.get());
+        n->setDrive(paramFor("drive", 1.0f));
+        n->setBias(paramFor("bias", 0.0f));
+        break;
+    }
+    case ProcessorKind::BurstNeuron: {
+        auto* n = static_cast<neurons::engine::nodes::BurstNeuronNode*>(procIt->second.get());
+        n->setCount(paramFor("count", 3.0f));
+        n->setIntervalMs(paramFor("interval_ms", 8.0f));
+        break;
+    }
+    case ProcessorKind::NeuronCore: {
+        auto* n = static_cast<neurons::engine::nodes::NeuronCoreNode*>(procIt->second.get());
         neurons::engine::nodes::NeuronCoreNode::Params p;
         p.gain = paramFor("gain", 1.0f);
         p.tauMs = paramFor("tau_ms", 20.0f);
-        neuron->setParams(p);
+        n->setParams(p);
+        break;
+    }
+    default:
+        break;
+    }
+
+    if (kind == ProcessorKind::Oscillator) {
+        gatherInputForPort(graph, nodeId, 2, scratch_.data(), numSamples);
+        auto* n = static_cast<neurons::engine::nodes::OscillatorNode*>(procIt->second.get());
+        n->processWithWaveSelect(std::span<const float>(inputA_.data(), static_cast<std::size_t>(numSamples)),
+                                 std::span<const float>(inputB_.data(), static_cast<std::size_t>(numSamples)),
+                                 std::span<const float>(scratch_.data(), static_cast<std::size_t>(numSamples)),
+                                 std::span<float>(nodeOutputs[0].data(), static_cast<std::size_t>(numSamples)));
+        return;
     }
 
     procIt->second->process(std::span<const float>(inputA_.data(), static_cast<std::size_t>(numSamples)),
                             std::span<const float>(inputB_.data(), static_cast<std::size_t>(numSamples)),
                             std::span<float>(nodeOutputs[0].data(), static_cast<std::size_t>(numSamples)));
 
-    if (auto* probe = dynamic_cast<neurons::engine::nodes::ScopeProbeNode*>(procIt->second.get()); probe != nullptr) {
+    if (kind == ProcessorKind::ScopeProbe) {
+        auto* probe = static_cast<neurons::engine::nodes::ScopeProbeNode*>(procIt->second.get());
         latestScopeProbePeak_.store(probe->lastPeak(), std::memory_order_relaxed);
         latestScopeProbeNodeId_.store(nodeId, std::memory_order_relaxed);
         const auto& source = nodeOutputs[0];
@@ -1113,6 +1383,7 @@ void AudioEngine::gatherInputForPort(const neurons::engine::core::GraphModel& gr
                                      neurons::engine::core::PortIndex port,
                                      float* out,
                                      int numSamples) const {
+    (void)graph;
     if (out == nullptr || numSamples <= 0) {
         return;
     }
@@ -1121,26 +1392,32 @@ void AudioEngine::gatherInputForPort(const neurons::engine::core::GraphModel& gr
         out[i] = 0.0f;
     }
 
-    for (const auto& c : graph.connections()) {
-        if (c.toNode != nodeId || c.toPort != port) {
-            continue;
-        }
+    const auto cacheIt = incomingCache_.find(inputKey(nodeId, port));
+    if (cacheIt == incomingCache_.end()) {
+        return;
+    }
 
-        const auto srcIt = outputs_.find(c.fromNode);
+    for (const auto& ref : cacheIt->second) {
+        const auto srcIt = outputs_.find(ref.fromNode);
         if (srcIt == outputs_.end()) {
             continue;
         }
 
         const auto& nodeOutputs = srcIt->second;
-        const std::size_t port = static_cast<std::size_t>(c.fromPort);
-        if (port >= nodeOutputs.size()) {
+        const std::size_t fromPort = static_cast<std::size_t>(ref.fromPort);
+        if (fromPort >= nodeOutputs.size()) {
             continue;
         }
-        const auto& source = nodeOutputs[port];
+        const auto& source = nodeOutputs[fromPort];
         for (int i = 0; i < numSamples; ++i) {
             out[i] += source[static_cast<std::size_t>(i)];
         }
     }
+}
+
+bool AudioEngine::hasIncomingConnection(neurons::engine::core::NodeId nodeId,
+                                        neurons::engine::core::PortIndex port) const {
+    return incomingCache_.find(inputKey(nodeId, port)) != incomingCache_.end();
 }
 
 std::optional<neurons::engine::core::NodeId> AudioEngine::chooseOutputNode(const neurons::engine::core::GraphModel& graph) const {
