@@ -1,0 +1,1971 @@
+{
+  "schema_version": 1,
+  "app": "neural",
+  "nodes": [
+    {
+      "id": 53,
+      "type": "Add",
+      "inputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "a"
+        },
+        {
+          "index": 1,
+          "type": "BipolarAudio",
+          "name": "b"
+        }
+      ],
+      "outputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "sum"
+        }
+      ],
+      "x": 1420.0,
+      "y": 1020.0
+    },
+    {
+      "id": 52,
+      "type": "Add",
+      "inputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "a"
+        },
+        {
+          "index": 1,
+          "type": "BipolarAudio",
+          "name": "b"
+        }
+      ],
+      "outputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "sum"
+        }
+      ],
+      "x": 1260.0,
+      "y": 1020.0
+    },
+    {
+      "id": 51,
+      "type": "Multiply",
+      "inputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "a"
+        },
+        {
+          "index": 1,
+          "type": "BipolarAudio",
+          "name": "b"
+        }
+      ],
+      "outputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "product"
+        }
+      ],
+      "x": 1100.0,
+      "y": 1080.0
+    },
+    {
+      "id": 50,
+      "type": "Multiply",
+      "inputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "a"
+        },
+        {
+          "index": 1,
+          "type": "BipolarAudio",
+          "name": "b"
+        }
+      ],
+      "outputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "product"
+        }
+      ],
+      "x": 1100.0,
+      "y": 1020.0
+    },
+    {
+      "id": 49,
+      "type": "Add",
+      "inputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "a"
+        },
+        {
+          "index": 1,
+          "type": "BipolarAudio",
+          "name": "b"
+        }
+      ],
+      "outputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "sum"
+        }
+      ],
+      "x": 1420.0,
+      "y": 880.0
+    },
+    {
+      "id": 48,
+      "type": "Add",
+      "inputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "a"
+        },
+        {
+          "index": 1,
+          "type": "BipolarAudio",
+          "name": "b"
+        }
+      ],
+      "outputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "sum"
+        }
+      ],
+      "x": 1260.0,
+      "y": 880.0
+    },
+    {
+      "id": 47,
+      "type": "Multiply",
+      "inputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "a"
+        },
+        {
+          "index": 1,
+          "type": "BipolarAudio",
+          "name": "b"
+        }
+      ],
+      "outputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "product"
+        }
+      ],
+      "x": 1100.0,
+      "y": 940.0
+    },
+    {
+      "id": 46,
+      "type": "Multiply",
+      "inputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "a"
+        },
+        {
+          "index": 1,
+          "type": "BipolarAudio",
+          "name": "b"
+        }
+      ],
+      "outputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "product"
+        }
+      ],
+      "x": 1100.0,
+      "y": 880.0
+    },
+    {
+      "id": 45,
+      "type": "WindowComparator",
+      "inputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "in"
+        },
+        {
+          "index": 1,
+          "type": "BipolarAudio",
+          "name": "center_cv"
+        }
+      ],
+      "outputs": [
+        {
+          "index": 0,
+          "type": "GateAudio",
+          "name": "window_gate"
+        }
+      ],
+      "x": 780.0,
+      "y": 980.0
+    },
+    {
+      "id": 44,
+      "type": "Compare",
+      "inputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "a"
+        },
+        {
+          "index": 1,
+          "type": "BipolarAudio",
+          "name": "b"
+        }
+      ],
+      "outputs": [
+        {
+          "index": 0,
+          "type": "GateAudio",
+          "name": "gate"
+        }
+      ],
+      "x": 780.0,
+      "y": 900.0
+    },
+    {
+      "id": 43,
+      "type": "Modulo",
+      "inputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "in"
+        },
+        {
+          "index": 1,
+          "type": "BipolarAudio",
+          "name": "mod"
+        }
+      ],
+      "outputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "out"
+        }
+      ],
+      "x": 620.0,
+      "y": 940.0
+    },
+    {
+      "id": 42,
+      "type": "Counter",
+      "inputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "clock"
+        },
+        {
+          "index": 1,
+          "type": "BipolarAudio",
+          "name": "reset"
+        }
+      ],
+      "outputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "count"
+        }
+      ],
+      "x": 460.0,
+      "y": 940.0
+    },
+    {
+      "id": 41,
+      "type": "SchmittTrigger",
+      "inputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "in"
+        },
+        {
+          "index": 1,
+          "type": "BipolarAudio",
+          "name": "threshold_cv"
+        }
+      ],
+      "outputs": [
+        {
+          "index": 0,
+          "type": "GateAudio",
+          "name": "gate"
+        }
+      ],
+      "x": 300.0,
+      "y": 940.0
+    },
+    {
+      "id": 40,
+      "type": "Oscillator",
+      "inputs": [
+        {
+          "index": 0,
+          "type": "HzAudio",
+          "name": "freq_hz"
+        },
+        {
+          "index": 1,
+          "type": "BipolarAudio",
+          "name": "phase_mod"
+        },
+        {
+          "index": 2,
+          "type": "TriggerAudio",
+          "name": "wave_mod"
+        }
+      ],
+      "outputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "out"
+        }
+      ],
+      "x": 120.0,
+      "y": 940.0
+    },
+    {
+      "id": 37,
+      "type": "Multiply",
+      "inputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "a"
+        },
+        {
+          "index": 1,
+          "type": "BipolarAudio",
+          "name": "b"
+        }
+      ],
+      "outputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "product"
+        }
+      ],
+      "x": 780.0,
+      "y": 840.0
+    },
+    {
+      "id": 36,
+      "type": "Multiply",
+      "inputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "a"
+        },
+        {
+          "index": 1,
+          "type": "BipolarAudio",
+          "name": "b"
+        }
+      ],
+      "outputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "product"
+        }
+      ],
+      "x": 780.0,
+      "y": 760.0
+    },
+    {
+      "id": 35,
+      "type": "SampleHoldClocked",
+      "inputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "in"
+        },
+        {
+          "index": 1,
+          "type": "GateAudio",
+          "name": "clock_gate"
+        }
+      ],
+      "outputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "out"
+        }
+      ],
+      "x": 620.0,
+      "y": 760.0
+    },
+    {
+      "id": 34,
+      "type": "Noise",
+      "inputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "seed_mod"
+        },
+        {
+          "index": 1,
+          "type": "BipolarAudio",
+          "name": "aux"
+        }
+      ],
+      "outputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "noise"
+        }
+      ],
+      "x": 460.0,
+      "y": 820.0
+    },
+    {
+      "id": 33,
+      "type": "SchmittTrigger",
+      "inputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "in"
+        },
+        {
+          "index": 1,
+          "type": "BipolarAudio",
+          "name": "threshold_cv"
+        }
+      ],
+      "outputs": [
+        {
+          "index": 0,
+          "type": "GateAudio",
+          "name": "gate"
+        }
+      ],
+      "x": 300.0,
+      "y": 760.0
+    },
+    {
+      "id": 32,
+      "type": "Oscillator",
+      "inputs": [
+        {
+          "index": 0,
+          "type": "HzAudio",
+          "name": "freq_hz"
+        },
+        {
+          "index": 1,
+          "type": "BipolarAudio",
+          "name": "phase_mod"
+        },
+        {
+          "index": 2,
+          "type": "TriggerAudio",
+          "name": "wave_mod"
+        }
+      ],
+      "outputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "out"
+        }
+      ],
+      "x": 120.0,
+      "y": 760.0
+    },
+    {
+      "id": 31,
+      "type": "Saturator",
+      "inputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "in"
+        },
+        {
+          "index": 1,
+          "type": "BipolarAudio",
+          "name": "side"
+        }
+      ],
+      "outputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "out"
+        }
+      ],
+      "x": 1700.0,
+      "y": 560.0
+    },
+    {
+      "id": 30,
+      "type": "ScopeProbe",
+      "inputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "in"
+        },
+        {
+          "index": 1,
+          "type": "BipolarAudio",
+          "name": "monitor_mod"
+        }
+      ],
+      "outputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "through"
+        }
+      ],
+      "x": 1700.0,
+      "y": 180.0
+    },
+    {
+      "id": 29,
+      "type": "BiquadCore",
+      "inputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "in"
+        },
+        {
+          "index": 1,
+          "type": "HzAudio",
+          "name": "cutoff"
+        }
+      ],
+      "outputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "out"
+        }
+      ],
+      "x": 1700.0,
+      "y": 430.0
+    },
+    {
+      "id": 28,
+      "type": "BitCrush",
+      "inputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "in"
+        },
+        {
+          "index": 1,
+          "type": "BipolarAudio",
+          "name": "bits_mod"
+        }
+      ],
+      "outputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "out"
+        }
+      ],
+      "x": 1580.0,
+      "y": 430.0
+    },
+    {
+      "id": 27,
+      "type": "Mix",
+      "inputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "in1"
+        },
+        {
+          "index": 1,
+          "type": "BipolarAudio",
+          "name": "in2"
+        },
+        {
+          "index": 2,
+          "type": "BipolarAudio",
+          "name": "in3"
+        },
+        {
+          "index": 3,
+          "type": "BipolarAudio",
+          "name": "in4"
+        }
+      ],
+      "outputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "out"
+        }
+      ],
+      "x": 1460.0,
+      "y": 430.0
+    },
+    {
+      "id": 26,
+      "type": "Multiply",
+      "inputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "a"
+        },
+        {
+          "index": 1,
+          "type": "BipolarAudio",
+          "name": "b"
+        }
+      ],
+      "outputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "product"
+        }
+      ],
+      "x": 1220.0,
+      "y": 620.0
+    },
+    {
+      "id": 25,
+      "type": "Noise",
+      "inputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "seed_mod"
+        },
+        {
+          "index": 1,
+          "type": "BipolarAudio",
+          "name": "aux"
+        }
+      ],
+      "outputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "noise"
+        }
+      ],
+      "x": 1080.0,
+      "y": 620.0
+    },
+    {
+      "id": 24,
+      "type": "ADEnvelope",
+      "inputs": [
+        {
+          "index": 0,
+          "type": "GateAudio",
+          "name": "trig"
+        },
+        {
+          "index": 1,
+          "type": "BipolarAudio",
+          "name": "time_mod"
+        }
+      ],
+      "outputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "env"
+        }
+      ],
+      "x": 940.0,
+      "y": 620.0
+    },
+    {
+      "id": 23,
+      "type": "Compare",
+      "inputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "a"
+        },
+        {
+          "index": 1,
+          "type": "BipolarAudio",
+          "name": "b"
+        }
+      ],
+      "outputs": [
+        {
+          "index": 0,
+          "type": "GateAudio",
+          "name": "gate"
+        }
+      ],
+      "x": 780.0,
+      "y": 620.0
+    },
+    {
+      "id": 22,
+      "type": "Multiply",
+      "inputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "a"
+        },
+        {
+          "index": 1,
+          "type": "BipolarAudio",
+          "name": "b"
+        }
+      ],
+      "outputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "product"
+        }
+      ],
+      "x": 1220.0,
+      "y": 520.0
+    },
+    {
+      "id": 21,
+      "type": "Oscillator",
+      "inputs": [
+        {
+          "index": 0,
+          "type": "HzAudio",
+          "name": "freq_hz"
+        },
+        {
+          "index": 1,
+          "type": "BipolarAudio",
+          "name": "phase_mod"
+        },
+        {
+          "index": 2,
+          "type": "TriggerAudio",
+          "name": "wave_mod"
+        }
+      ],
+      "outputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "out"
+        }
+      ],
+      "x": 1080.0,
+      "y": 520.0
+    },
+    {
+      "id": 20,
+      "type": "ADEnvelope",
+      "inputs": [
+        {
+          "index": 0,
+          "type": "GateAudio",
+          "name": "trig"
+        },
+        {
+          "index": 1,
+          "type": "BipolarAudio",
+          "name": "time_mod"
+        }
+      ],
+      "outputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "env"
+        }
+      ],
+      "x": 940.0,
+      "y": 520.0
+    },
+    {
+      "id": 19,
+      "type": "Compare",
+      "inputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "a"
+        },
+        {
+          "index": 1,
+          "type": "BipolarAudio",
+          "name": "b"
+        }
+      ],
+      "outputs": [
+        {
+          "index": 0,
+          "type": "GateAudio",
+          "name": "gate"
+        }
+      ],
+      "x": 780.0,
+      "y": 520.0
+    },
+    {
+      "id": 18,
+      "type": "Multiply",
+      "inputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "a"
+        },
+        {
+          "index": 1,
+          "type": "BipolarAudio",
+          "name": "b"
+        }
+      ],
+      "outputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "product"
+        }
+      ],
+      "x": 1380.0,
+      "y": 360.0
+    },
+    {
+      "id": 17,
+      "type": "ADEnvelope",
+      "inputs": [
+        {
+          "index": 0,
+          "type": "GateAudio",
+          "name": "trig"
+        },
+        {
+          "index": 1,
+          "type": "BipolarAudio",
+          "name": "time_mod"
+        }
+      ],
+      "outputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "env"
+        }
+      ],
+      "x": 1220.0,
+      "y": 420.0
+    },
+    {
+      "id": 16,
+      "type": "Compare",
+      "inputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "a"
+        },
+        {
+          "index": 1,
+          "type": "BipolarAudio",
+          "name": "b"
+        }
+      ],
+      "outputs": [
+        {
+          "index": 0,
+          "type": "GateAudio",
+          "name": "gate"
+        }
+      ],
+      "x": 780.0,
+      "y": 420.0
+    },
+    {
+      "id": 15,
+      "type": "Oscillator",
+      "inputs": [
+        {
+          "index": 0,
+          "type": "HzAudio",
+          "name": "freq_hz"
+        },
+        {
+          "index": 1,
+          "type": "BipolarAudio",
+          "name": "phase_mod"
+        },
+        {
+          "index": 2,
+          "type": "TriggerAudio",
+          "name": "wave_mod"
+        }
+      ],
+      "outputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "out"
+        }
+      ],
+      "x": 1220.0,
+      "y": 320.0
+    },
+    {
+      "id": 14,
+      "type": "MidiNoteToHz",
+      "inputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "midi_note"
+        },
+        {
+          "index": 1,
+          "type": "BipolarAudio",
+          "name": "transpose"
+        }
+      ],
+      "outputs": [
+        {
+          "index": 0,
+          "type": "HzAudio",
+          "name": "hz_out"
+        }
+      ],
+      "x": 1080.0,
+      "y": 320.0
+    },
+    {
+      "id": 13,
+      "type": "Add",
+      "inputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "a"
+        },
+        {
+          "index": 1,
+          "type": "BipolarAudio",
+          "name": "b"
+        }
+      ],
+      "outputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "sum"
+        }
+      ],
+      "x": 940.0,
+      "y": 320.0
+    },
+    {
+      "id": 12,
+      "type": "Multiply",
+      "inputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "a"
+        },
+        {
+          "index": 1,
+          "type": "BipolarAudio",
+          "name": "b"
+        }
+      ],
+      "outputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "product"
+        }
+      ],
+      "x": 780.0,
+      "y": 320.0
+    },
+    {
+      "id": 11,
+      "type": "Multiply",
+      "inputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "a"
+        },
+        {
+          "index": 1,
+          "type": "BipolarAudio",
+          "name": "b"
+        }
+      ],
+      "outputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "product"
+        }
+      ],
+      "x": 1380.0,
+      "y": 180.0
+    },
+    {
+      "id": 10,
+      "type": "ADEnvelope",
+      "inputs": [
+        {
+          "index": 0,
+          "type": "GateAudio",
+          "name": "trig"
+        },
+        {
+          "index": 1,
+          "type": "BipolarAudio",
+          "name": "time_mod"
+        }
+      ],
+      "outputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "env"
+        }
+      ],
+      "x": 1220.0,
+      "y": 240.0
+    },
+    {
+      "id": 8,
+      "type": "MidiNoteToHz",
+      "inputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "midi_note"
+        },
+        {
+          "index": 1,
+          "type": "BipolarAudio",
+          "name": "transpose"
+        }
+      ],
+      "outputs": [
+        {
+          "index": 0,
+          "type": "HzAudio",
+          "name": "hz_out"
+        }
+      ],
+      "x": 1080.0,
+      "y": 140.0
+    },
+    {
+      "id": 55,
+      "type": "UnitConvert",
+      "inputs": [
+        {
+          "index": 0,
+          "type": "GateAudio",
+          "name": "in"
+        }
+      ],
+      "outputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "out"
+        }
+      ],
+      "x": 940.0,
+      "y": 980.0
+    },
+    {
+      "id": 9,
+      "type": "Oscillator",
+      "inputs": [
+        {
+          "index": 0,
+          "type": "HzAudio",
+          "name": "freq_hz"
+        },
+        {
+          "index": 1,
+          "type": "BipolarAudio",
+          "name": "phase_mod"
+        },
+        {
+          "index": 2,
+          "type": "TriggerAudio",
+          "name": "wave_mod"
+        }
+      ],
+      "outputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "out"
+        }
+      ],
+      "x": 1220.0,
+      "y": 140.0
+    },
+    {
+      "id": 54,
+      "type": "UnitConvert",
+      "inputs": [
+        {
+          "index": 0,
+          "type": "GateAudio",
+          "name": "in"
+        }
+      ],
+      "outputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "out"
+        }
+      ],
+      "x": 940.0,
+      "y": 900.0
+    },
+    {
+      "id": 7,
+      "type": "Add",
+      "inputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "a"
+        },
+        {
+          "index": 1,
+          "type": "BipolarAudio",
+          "name": "b"
+        }
+      ],
+      "outputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "sum"
+        }
+      ],
+      "x": 940.0,
+      "y": 140.0
+    },
+    {
+      "id": 6,
+      "type": "Multiply",
+      "inputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "a"
+        },
+        {
+          "index": 1,
+          "type": "BipolarAudio",
+          "name": "b"
+        }
+      ],
+      "outputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "product"
+        }
+      ],
+      "x": 780.0,
+      "y": 140.0
+    },
+    {
+      "id": 5,
+      "type": "Modulo",
+      "inputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "in"
+        },
+        {
+          "index": 1,
+          "type": "BipolarAudio",
+          "name": "mod"
+        }
+      ],
+      "outputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "out"
+        }
+      ],
+      "x": 620.0,
+      "y": 620.0
+    },
+    {
+      "id": 4,
+      "type": "Counter",
+      "inputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "clock"
+        },
+        {
+          "index": 1,
+          "type": "BipolarAudio",
+          "name": "reset"
+        }
+      ],
+      "outputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "count"
+        }
+      ],
+      "x": 460.0,
+      "y": 620.0
+    },
+    {
+      "id": 3,
+      "type": "SchmittTrigger",
+      "inputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "in"
+        },
+        {
+          "index": 1,
+          "type": "BipolarAudio",
+          "name": "threshold_cv"
+        }
+      ],
+      "outputs": [
+        {
+          "index": 0,
+          "type": "GateAudio",
+          "name": "gate"
+        }
+      ],
+      "x": 300.0,
+      "y": 620.0
+    },
+    {
+      "id": 2,
+      "type": "Oscillator",
+      "inputs": [
+        {
+          "index": 0,
+          "type": "HzAudio",
+          "name": "freq_hz"
+        },
+        {
+          "index": 1,
+          "type": "BipolarAudio",
+          "name": "phase_mod"
+        },
+        {
+          "index": 2,
+          "type": "TriggerAudio",
+          "name": "wave_mod"
+        }
+      ],
+      "outputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "out"
+        }
+      ],
+      "x": 120.0,
+      "y": 620.0
+    },
+    {
+      "id": 1,
+      "type": "OutputStereo",
+      "inputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "in_l"
+        },
+        {
+          "index": 1,
+          "type": "BipolarAudio",
+          "name": "in_r"
+        }
+      ],
+      "outputs": [
+        {
+          "index": 0,
+          "type": "BipolarAudio",
+          "name": "tap"
+        }
+      ],
+      "x": 1700.0,
+      "y": 300.0
+    }
+  ],
+  "connections": [
+    {
+      "from_node": 2,
+      "from_port": 0,
+      "to_node": 3,
+      "to_port": 0
+    },
+    {
+      "from_node": 2,
+      "from_port": 0,
+      "to_node": 4,
+      "to_port": 0
+    },
+    {
+      "from_node": 4,
+      "from_port": 0,
+      "to_node": 5,
+      "to_port": 0
+    },
+    {
+      "from_node": 5,
+      "from_port": 0,
+      "to_node": 6,
+      "to_port": 0
+    },
+    {
+      "from_node": 6,
+      "from_port": 0,
+      "to_node": 7,
+      "to_port": 0
+    },
+    {
+      "from_node": 7,
+      "from_port": 0,
+      "to_node": 8,
+      "to_port": 0
+    },
+    {
+      "from_node": 8,
+      "from_port": 0,
+      "to_node": 9,
+      "to_port": 0
+    },
+    {
+      "from_node": 3,
+      "from_port": 0,
+      "to_node": 10,
+      "to_port": 0
+    },
+    {
+      "from_node": 9,
+      "from_port": 0,
+      "to_node": 11,
+      "to_port": 0
+    },
+    {
+      "from_node": 10,
+      "from_port": 0,
+      "to_node": 11,
+      "to_port": 1
+    },
+    {
+      "from_node": 5,
+      "from_port": 0,
+      "to_node": 12,
+      "to_port": 0
+    },
+    {
+      "from_node": 12,
+      "from_port": 0,
+      "to_node": 13,
+      "to_port": 0
+    },
+    {
+      "from_node": 13,
+      "from_port": 0,
+      "to_node": 14,
+      "to_port": 0
+    },
+    {
+      "from_node": 14,
+      "from_port": 0,
+      "to_node": 15,
+      "to_port": 0
+    },
+    {
+      "from_node": 5,
+      "from_port": 0,
+      "to_node": 16,
+      "to_port": 0
+    },
+    {
+      "from_node": 16,
+      "from_port": 0,
+      "to_node": 17,
+      "to_port": 0
+    },
+    {
+      "from_node": 15,
+      "from_port": 0,
+      "to_node": 18,
+      "to_port": 0
+    },
+    {
+      "from_node": 17,
+      "from_port": 0,
+      "to_node": 18,
+      "to_port": 1
+    },
+    {
+      "from_node": 5,
+      "from_port": 0,
+      "to_node": 19,
+      "to_port": 0
+    },
+    {
+      "from_node": 19,
+      "from_port": 0,
+      "to_node": 20,
+      "to_port": 0
+    },
+    {
+      "from_node": 21,
+      "from_port": 0,
+      "to_node": 22,
+      "to_port": 0
+    },
+    {
+      "from_node": 20,
+      "from_port": 0,
+      "to_node": 22,
+      "to_port": 1
+    },
+    {
+      "from_node": 5,
+      "from_port": 0,
+      "to_node": 23,
+      "to_port": 0
+    },
+    {
+      "from_node": 23,
+      "from_port": 0,
+      "to_node": 24,
+      "to_port": 0
+    },
+    {
+      "from_node": 25,
+      "from_port": 0,
+      "to_node": 26,
+      "to_port": 0
+    },
+    {
+      "from_node": 24,
+      "from_port": 0,
+      "to_node": 26,
+      "to_port": 1
+    },
+    {
+      "from_node": 11,
+      "from_port": 0,
+      "to_node": 27,
+      "to_port": 0
+    },
+    {
+      "from_node": 18,
+      "from_port": 0,
+      "to_node": 27,
+      "to_port": 1
+    },
+    {
+      "from_node": 22,
+      "from_port": 0,
+      "to_node": 27,
+      "to_port": 2
+    },
+    {
+      "from_node": 26,
+      "from_port": 0,
+      "to_node": 27,
+      "to_port": 3
+    },
+    {
+      "from_node": 27,
+      "from_port": 0,
+      "to_node": 28,
+      "to_port": 0
+    },
+    {
+      "from_node": 28,
+      "from_port": 0,
+      "to_node": 29,
+      "to_port": 0
+    },
+    {
+      "from_node": 29,
+      "from_port": 0,
+      "to_node": 31,
+      "to_port": 0
+    },
+    {
+      "from_node": 31,
+      "from_port": 0,
+      "to_node": 30,
+      "to_port": 0
+    },
+    {
+      "from_node": 30,
+      "from_port": 0,
+      "to_node": 1,
+      "to_port": 0
+    },
+    {
+      "from_node": 30,
+      "from_port": 0,
+      "to_node": 1,
+      "to_port": 1
+    },
+    {
+      "from_node": 32,
+      "from_port": 0,
+      "to_node": 33,
+      "to_port": 0
+    },
+    {
+      "from_node": 34,
+      "from_port": 0,
+      "to_node": 35,
+      "to_port": 0
+    },
+    {
+      "from_node": 33,
+      "from_port": 0,
+      "to_node": 35,
+      "to_port": 1
+    },
+    {
+      "from_node": 35,
+      "from_port": 0,
+      "to_node": 36,
+      "to_port": 0
+    },
+    {
+      "from_node": 35,
+      "from_port": 0,
+      "to_node": 37,
+      "to_port": 0
+    },
+    {
+      "from_node": 40,
+      "from_port": 0,
+      "to_node": 41,
+      "to_port": 0
+    },
+    {
+      "from_node": 40,
+      "from_port": 0,
+      "to_node": 42,
+      "to_port": 0
+    },
+    {
+      "from_node": 42,
+      "from_port": 0,
+      "to_node": 43,
+      "to_port": 0
+    },
+    {
+      "from_node": 43,
+      "from_port": 0,
+      "to_node": 44,
+      "to_port": 0
+    },
+    {
+      "from_node": 42,
+      "from_port": 0,
+      "to_node": 45,
+      "to_port": 0
+    },
+    {
+      "from_node": 44,
+      "from_port": 0,
+      "to_node": 54,
+      "to_port": 0
+    },
+    {
+      "from_node": 45,
+      "from_port": 0,
+      "to_node": 55,
+      "to_port": 0
+    },
+    {
+      "from_node": 54,
+      "from_port": 0,
+      "to_node": 46,
+      "to_port": 0
+    },
+    {
+      "from_node": 55,
+      "from_port": 0,
+      "to_node": 47,
+      "to_port": 0
+    },
+    {
+      "from_node": 54,
+      "from_port": 0,
+      "to_node": 50,
+      "to_port": 0
+    },
+    {
+      "from_node": 55,
+      "from_port": 0,
+      "to_node": 51,
+      "to_port": 0
+    },
+    {
+      "from_node": 36,
+      "from_port": 0,
+      "to_node": 48,
+      "to_port": 0
+    },
+    {
+      "from_node": 46,
+      "from_port": 0,
+      "to_node": 48,
+      "to_port": 1
+    },
+    {
+      "from_node": 48,
+      "from_port": 0,
+      "to_node": 49,
+      "to_port": 0
+    },
+    {
+      "from_node": 47,
+      "from_port": 0,
+      "to_node": 49,
+      "to_port": 1
+    },
+    {
+      "from_node": 37,
+      "from_port": 0,
+      "to_node": 52,
+      "to_port": 0
+    },
+    {
+      "from_node": 50,
+      "from_port": 0,
+      "to_node": 52,
+      "to_port": 1
+    },
+    {
+      "from_node": 52,
+      "from_port": 0,
+      "to_node": 53,
+      "to_port": 0
+    },
+    {
+      "from_node": 51,
+      "from_port": 0,
+      "to_node": 53,
+      "to_port": 1
+    },
+    {
+      "from_node": 49,
+      "from_port": 0,
+      "to_node": 8,
+      "to_port": 1
+    },
+    {
+      "from_node": 53,
+      "from_port": 0,
+      "to_node": 14,
+      "to_port": 1
+    }
+  ],
+  "params": [
+    {
+      "id": 50,
+      "values": {
+        "multiplicand": 3.0
+      }
+    },
+    {
+      "id": 47,
+      "values": {
+        "multiplicand": -7.0
+      }
+    },
+    {
+      "id": 46,
+      "values": {
+        "multiplicand": 5.0
+      }
+    },
+    {
+      "id": 45,
+      "values": {
+        "width": 0.200000002980232,
+        "center": 4.0
+      }
+    },
+    {
+      "id": 44,
+      "values": {
+        "b_value": 0.5,
+        "greater": 1.0
+      }
+    },
+    {
+      "id": 43,
+      "values": {
+        "modulus": 2.0
+      }
+    },
+    {
+      "id": 42,
+      "values": {
+        "max": 5.0,
+        "wrap": 1.0,
+        "min": 0.0
+      }
+    },
+    {
+      "id": 40,
+      "values": {
+        "freq_hz": 0.029999999329448,
+        "waveform": 3.0
+      }
+    },
+    {
+      "id": 37,
+      "values": {
+        "multiplicand": 7.0
+      }
+    },
+    {
+      "id": 36,
+      "values": {
+        "multiplicand": 12.0
+      }
+    },
+    {
+      "id": 33,
+      "values": {
+        "threshold": 0.0,
+        "hysteresis": 0.219999998807907
+      }
+    },
+    {
+      "id": 32,
+      "values": {
+        "freq_hz": 0.050000000745058,
+        "waveform": 3.0
+      }
+    },
+    {
+      "id": 24,
+      "values": {
+        "decay_ms": 45.0,
+        "attack_ms": 0.019999999552965
+      }
+    },
+    {
+      "id": 23,
+      "values": {
+        "b_value": 1.0,
+        "greater": 1.0
+      }
+    },
+    {
+      "id": 21,
+      "values": {
+        "freq_hz": 55.0,
+        "waveform": 0.0
+      }
+    },
+    {
+      "id": 20,
+      "values": {
+        "decay_ms": 120.0,
+        "attack_ms": 0.019999999552965
+      }
+    },
+    {
+      "id": 19,
+      "values": {
+        "b_value": 1.0,
+        "greater": 0.0
+      }
+    },
+    {
+      "id": 17,
+      "values": {
+        "decay_ms": 160.0,
+        "attack_ms": 2.0
+      }
+    },
+    {
+      "id": 16,
+      "values": {
+        "b_value": 2.0,
+        "greater": 0.0
+      }
+    },
+    {
+      "id": 15,
+      "values": {
+        "waveform": 3.0
+      }
+    },
+    {
+      "id": 14,
+      "values": {
+        "quantize": 1.0
+      }
+    },
+    {
+      "id": 12,
+      "values": {
+        "multiplicand": 5.0
+      }
+    },
+    {
+      "id": 10,
+      "values": {
+        "decay_ms": 70.0,
+        "attack_ms": 1.0
+      }
+    },
+    {
+      "id": 9,
+      "values": {
+        "waveform": 3.0
+      }
+    },
+    {
+      "id": 31,
+      "values": {
+        "drive": 1.049999952316284
+      }
+    },
+    {
+      "id": 8,
+      "values": {
+        "quantize": 1.0
+      }
+    },
+    {
+      "id": 29,
+      "values": {
+        "cutoff_hz": 3400.0
+      }
+    },
+    {
+      "id": 6,
+      "values": {
+        "multiplicand": 3.0
+      }
+    },
+    {
+      "id": 28,
+      "values": {
+        "b_value": 6.0
+      }
+    },
+    {
+      "id": 5,
+      "values": {
+        "modulus": 4.0
+      }
+    },
+    {
+      "id": 27,
+      "values": {
+        "inlets": 4.0
+      }
+    },
+    {
+      "id": 4,
+      "values": {
+        "wrap": 1.0,
+        "max": 15.0,
+        "min": 0.0
+      }
+    },
+    {
+      "id": 51,
+      "values": {
+        "multiplicand": -5.0
+      }
+    },
+    {
+      "id": 7,
+      "values": {
+        "b_value": 72.0
+      }
+    },
+    {
+      "id": 13,
+      "values": {
+        "b_value": 36.0
+      }
+    },
+    {
+      "id": 2,
+      "values": {
+        "waveform": 3.0,
+        "freq_hz": 7.5
+      }
+    }
+  ]
+}
